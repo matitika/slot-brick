@@ -627,6 +627,9 @@ pub struct App {
     root: Option<PathBuf>,
     state: SlotState,
     left_stick: bool,
+    /// False where slot's own updates cannot be installed (TrimUI), so
+    /// Check for Updates is not offered.
+    self_updates: bool,
     controls: Controls,
     capture: Option<BindCapture>,
     plugged_face: Option<TexId>,
@@ -1124,6 +1127,7 @@ impl App {
             root: None,
             state: SlotState::default(),
             left_stick: false,
+            self_updates: true,
             controls: Controls::default(),
             capture: None,
             plugged_face: None,
@@ -2590,6 +2594,9 @@ impl App {
         if !self.left_stick {
             hidden.push(QuickRow::LeftStick);
         }
+        if !self.self_updates {
+            hidden.push(QuickRow::CheckUpdates);
+        }
         if !self.state.turbo {
             hidden.extend([QuickRow::GameTurboA, QuickRow::GameTurboB]);
         }
@@ -3569,6 +3576,9 @@ impl App {
         }
         if !self.left_stick {
             hidden.push(QuickRow::LeftStick);
+        }
+        if !self.self_updates {
+            hidden.push(QuickRow::CheckUpdates);
         }
         if !self.state.turbo {
             hidden.extend([QuickRow::GameTurboA, QuickRow::GameTurboB]);
@@ -4654,6 +4664,10 @@ impl App {
 
     pub fn set_left_stick(&mut self, present: bool) {
         self.left_stick = present;
+    }
+
+    pub fn set_self_updates(&mut self, on: bool) {
+        self.self_updates = on;
     }
 
     pub fn left_stick_dpad(&self) -> bool {
@@ -11591,7 +11605,7 @@ impl App {
     }
 
     fn open_check_for_updates(&mut self) {
-        if self.update_offered() {
+        if self.self_updates && self.update_offered() {
             self.check_for_update();
         }
     }

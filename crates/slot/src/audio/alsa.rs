@@ -200,6 +200,14 @@ impl AudioSink for AlsaSink {
     }
 }
 
+/// On TrimUI the first sound after the codec was let go has frozen the whole
+/// handheld, with reopening it the only thing in flight. NextUI never closes
+/// it there, so on the Brick the device stays open through silence.
+fn keeps_device_open() -> bool {
+    static HOLD: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *HOLD.get_or_init(|| slot_power::Board::detect().is_trimui())
+}
+
 struct Playback {
     alsa: Alsa,
     pcm: Option<*mut c_void>,
@@ -236,7 +244,7 @@ impl Playback {
                 eprintln!("slot: audio released to follow the new audio route");
             }
             match (self.pcm, hold) {
-                (Some(_), false) if !jack.plugged() => {
+                (Some(_), false) if !jack.plugged() && !keeps_device_open() => {
                     self.release();
                     eprintln!("slot: audio released after silence");
                 }

@@ -1,0 +1,106 @@
+#!/bin/sh
+# TrimUI stock firmware runs /mnt/SDCARD/.tmp_update/updater at boot, in place
+# of its own MainUI, once NextUI/MinUI's runtrimui.sh hook is installed (see
+# card/trimui/trimui/app). This brings the Brick / Brick Pro up the way slot
+# expects, then runs slot until it powers the device off itself.
+
+SD="${SLOT_ROOT:-/mnt/SDCARD}"
+SYS="$SD/System"
+LOGS="$SD/Logs"
+RUN="${SLOT_RUN:-/tmp/slot-run}"
+SESSION_MAX=65536
+export SLOT_ROOT="$SD"
+export SLOT_RUN="$RUN"
+mkdir -p "$LOGS" "$RUN" 2>/dev/null
+
+[ $(wc -c < "$LOGS/slot-session.log" 2>/dev/null || echo 0) -gt "$SESSION_MAX" ] \
+	&& mv -f "$LOGS/slot-session.log" "$LOGS/slot-session.log.1"
+
+log() {
+	echo "$(date '+%F %T') $*" >> "$LOGS/slot-session.log" 2>/dev/null
+	sync
+}
+
+# keep the last few runs' logs, so a crash is not lost to the restart after it
+keep_logs() {
+	i=4
+	while [ "$i" -ge 1 ]; do
+		[ -f "$LOGS/slot.log.$i" ] && mv -f "$LOGS/slot.log.$i" "$LOGS/slot.log.$((i + 1))"
+		i=$((i - 1))
+	done
+	[ -f "$LOGS/slot.log" ] && mv -f "$LOGS/slot.log" "$LOGS/slot.log.1"
+	return 0
+}
+
+model="$(strings /usr/trimui/bin/MainUI 2>/dev/null | grep -i '^Trimui' | head -n 1)"
+model_lc="$(echo "$model" | tr 'A-Z' 'a-z')"
+case "$model_lc" in
+*brick*pro*) device=brickpro ;;
+*brick*) device=brick ;;
+*)
+	case "$(cat /proc/cpuinfo 2>/dev/null)" in
+	*TG4040*) device=brickpro ;;
+	*TG3040*) device=brick ;;
+	# this card is for the Brick family
+	*) device=brickpro ;;
+	esac
+	;;
+esac
+export SLOT_DEVICE="${SLOT_DEVICE:-$device}"
+export SLOT_KEYMAP="${SLOT_KEYMAP:-trimui}"
+# set SLOT_TRACE_INPUT=1 to log every pad event to Logs/input-trace.log
+log "boot on ${model:-unknown} ($SLOT_DEVICE)"
+
+export LD_LIBRARY_PATH="/usr/trimui/lib:/usr/lib:$LD_LIBRARY_PATH"
+export PATH="/usr/trimui/bin:$PATH"
+
+gpio_out() {
+	[ -d "/sys/class/gpio/gpio$1" ] || echo "$1" > /sys/class/gpio/export 2>/dev/null
+	echo -n out > "/sys/class/gpio/gpio$1/direction" 2>/dev/null
+	echo -n "$2" > "/sys/class/gpio/gpio$1/value" 2>/dev/null
+}
+
+# PD11 high powers the 5V rail the pad and speaker amp hang off
+gpio_out 107 1
+# PH3 drives the rumble motor, idle until slot asks for it
+gpio_out 227 0
+
+# every light off until slot picks a state for the top bar
+for scale in max_scale max_scale_lr max_scale_f1f2 max_scale_rear; do
+	echo 0 > "/sys/class/led_anim/$scale" 2>/dev/null
+done
+
+# slot scales samples itself, so open the codec all the way up once
+amixer -q sset 'DAC volume' 160 2>/dev/null
+amixer -q sset 'digital volume' 0 2>/dev/null
+echo 0 > /sys/class/speaker/mute 2>/dev/null
+
+# the stock pad is a serial device that trimui_inputd turns into evdev
+pidof trimui_inputd > /dev/null 2>&1 || trimui_inputd > /dev/null 2>&1 &
+
+cd "$SYS" || exit 1
+
+crashes=0
+while :; do
+	keep_logs
+	log "exec $SYS/slot"
+	began="$(date +%s)"
+	/lib/ld-linux-aarch64.so.1 "$SYS/slot" > "$LOGS/slot.log" 2>&1
+	status=$?
+	log "slot exited $status"
+	sync
+	# a run that lasted a minute was not a boot loop
+	[ $(($(date +%s) - began)) -ge 60 ] && crashes=0
+	crashes=$((crashes + 1))
+	if [ "$crashes" -ge 3 ]; then
+		log "slot keeps exiting, powering off"
+		break
+	fi
+	sleep 1
+done
+
+killall trimui_inputd 2>/dev/null
+# never fall through to stock, it would rescan and rewrite this card
+sync
+poweroff
+while :; do sleep 1; done

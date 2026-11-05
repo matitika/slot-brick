@@ -8,9 +8,11 @@ use slot::screen::Screen;
 use slot::input::DeviceInput;
 use slot::panel_turn::{panel_turn, PanelTurn};
 use slot_gfx::{Compositor, DsPass, DsScreen, FbdevSurface, KmsSurface, Surface};
-use slot_power::{trace_first_frame, DevicePlatform};
+use slot_power::{trace_first_frame, Board, DevicePlatform};
 
 const CARD: &str = "/mnt/sdcard";
+
+const TRIMUI_CARD: &str = "/mnt/SDCARD";
 
 const MIN_FRAME: Duration = Duration::from_millis(12);
 
@@ -27,13 +29,17 @@ pub fn run() {
     let audio = std::thread::Builder::new()
         .name("slot-audio-open".into())
         .spawn(slot::audio::opened_sink);
+    let board = Board::detect();
+    eprintln!("slot: board {board:?}");
     let root = std::env::var_os("SLOT_ROOT")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(CARD));
+        .unwrap_or_else(|| PathBuf::from(if board.is_trimui() { TRIMUI_CARD } else { CARD }));
     let opened: Result<Box<dyn Surface>, _> = match slot::baseos::var("BASEOS_PLATFORM").as_deref()
     {
         Some("rk3568") => KmsSurface::new().map(|s| Box::new(s) as Box<dyn Surface>),
-        _ => FbdevSurface::new().map(|s| Box::new(s) as Box<dyn Surface>),
+        // the Brick's PowerVR takes no native fbdev window
+        _ => FbdevSurface::with_window(!board.is_trimui())
+            .map(|s| Box::new(s) as Box<dyn Surface>),
     };
     let mut surface = match opened {
         Ok(s) => s,
@@ -76,7 +82,12 @@ pub fn run() {
             return;
         }
     }
-    let platform = DevicePlatform::new(root.clone());
+    let platform = DevicePlatform::probe_board(
+        std::path::Path::new("/sys"),
+        std::path::Path::new("/dev"),
+        root.clone(),
+        board,
+    );
     eprintln!("slot: {}", platform.report());
     platform.trace_boot();
     slot::boot_time::mark("platform");
@@ -90,6 +101,8 @@ pub fn run() {
     let target = slot::baseos::var("BASEOS_TARGET").unwrap_or_default();
     let keymap = slot::input::evdev::Keymap::of_system();
     frontend.set_left_stick(keymap.has_stick(&target));
+    // releases are built for the Anbernics and applied by their launcher
+    frontend.set_self_updates(!board.is_trimui());
     frontend.upload_boot_faces(&mut compositor);
     slot::boot_time::mark("faces");
     frontend.upload_bezel(&mut compositor, window);
@@ -103,7 +116,10 @@ pub fn run() {
     let _ = std::thread::Builder::new()
         .name("slot-bootlogo".into())
         .spawn(move || {
-            slot::bootlogo::refresh(&card);
+            // the boot logo partition is the Anbernics'; TrimUI keeps its own
+            if !board.is_trimui() {
+                slot::bootlogo::refresh(&card);
+            }
             slot::root::sweep_temps(&card);
         });
     let _ = std::thread::Builder::new()

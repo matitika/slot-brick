@@ -1,0 +1,21 @@
+#!/bin/sh
+# One-time installer. Stock TrimUI runs the card's trimui/app/MainUI in place
+# of its own; this wraps runtrimui.sh so later boots hand over to
+# .tmp_update/updater (as NextUI's installer does), then starts slot.
+SD=/mnt/SDCARD
+cd "$SD/trimui/app" || exit 1
+mkdir -p "$SD/Logs"
+echo "$(date '+%F %T') installer: start" >> "$SD/Logs/slot-session.log"
+if [ -f /usr/trimui/bin/runtrimui.sh ] && [ ! -f /usr/trimui/bin/runtrimui-original.sh ]; then
+	mv /usr/trimui/bin/runtrimui.sh /usr/trimui/bin/runtrimui-original.sh
+	cp ./runtrimui.sh /usr/trimui/bin/runtrimui.sh
+	chmod +x /usr/trimui/bin/runtrimui.sh
+	echo "$(date '+%F %T') installer: boot hook installed" >> "$SD/Logs/slot-session.log"
+else
+	echo "$(date '+%F %T') installer: boot hook already there" >> "$SD/Logs/slot-session.log"
+fi
+sync
+cd "$SD"
+rm -rf "$SD/trimui"
+sync
+exec "$SD/.tmp_update/updater"

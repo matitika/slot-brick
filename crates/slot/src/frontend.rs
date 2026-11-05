@@ -1422,6 +1422,10 @@ impl Frontend {
         self.session.app_mut().set_left_stick(present);
     }
 
+    pub fn set_self_updates(&mut self, on: bool) {
+        self.session.app_mut().set_self_updates(on);
+    }
+
     pub fn core_settling(&self) -> bool {
         self.session.core_settling()
     }

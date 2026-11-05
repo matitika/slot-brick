@@ -7,7 +7,10 @@ use std::time::Instant;
 
 use slot_input::{Btn, InputSource, Millis, RawEvent};
 
-use super::evdev::{decode, device_name, Ev, Hat, Keymap, EVENT_BYTES, EV_ABS, EV_KEY, EV_SYN};
+use super::evdev::{
+    decode, device_name, Ev, Hat, Keymap, Triggers, ABS_RZ, ABS_Z, EVENT_BYTES, EV_ABS, EV_KEY,
+    EV_SYN,
+};
 use super::trace;
 
 const DEV: &str = "/dev/input";
@@ -75,7 +78,10 @@ impl DeviceInput {
             held,
             pending,
             stick,
-            hall: find_hall(Path::new(PSY)),
+            // the Brick has no lid: its PMIC's hallkey must not put it to sleep
+            hall: (keymap != Keymap::TrimUi)
+                .then(|| find_hall(Path::new(PSY)))
+                .flatten(),
             lid_shut: None,
             next_lid_poll: 0,
             touch: (keymap == Keymap::DsOs)
@@ -117,6 +123,26 @@ fn quicken_poll(sys: &Path, node: &Path) {
     }
 }
 
+const EVIOCGABS: u64 = 0x8018_4540;
+
+/// Halfway along an analog trigger's travel, as the kernel reports its range.
+fn trigger_threshold(file: &File, axis: u16) -> i32 {
+    use std::os::unix::io::AsRawFd;
+    let mut info = [0i32; 6];
+    let rc = unsafe {
+        libc::ioctl(
+            file.as_raw_fd(),
+            (EVIOCGABS + u64::from(axis)) as _,
+            info.as_mut_ptr(),
+        )
+    };
+    let (min, max) = (info[1], info[2]);
+    if rc < 0 || max <= min {
+        return 1;
+    }
+    min + (max - min) / 2
+}
+
 fn read_node(
     keymap: Keymap,
     node: &Path,
@@ -136,6 +162,12 @@ fn read_node(
             return;
         }
     };
+    let mut triggers = keymap.analog_triggers().then(|| {
+        Triggers::axes(
+            trigger_threshold(&file, ABS_Z),
+            trigger_threshold(&file, ABS_RZ),
+        )
+    });
     let mut buf = [0u8; EVENT_BYTES * 16];
     loop {
         let read = match file.read(&mut buf) {
@@ -154,6 +186,10 @@ fn read_node(
             }
             if (ev.kind == EV_KEY && ev.value == 1) || (ev.kind == EV_ABS && ev.value != 0) {
                 crate::latency::read();
+            }
+            if let Some(pressed) = triggers.as_mut().and_then(|t| t.feed(ev)) {
+                events.push(pressed);
+                continue;
             }
             match hat.takes(ev) {
                 true => {

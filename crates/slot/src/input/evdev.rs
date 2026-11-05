@@ -16,6 +16,12 @@ pub const ABS_LSX: u16 = 0x02;
 pub const ABS_LSY: u16 = 0x03;
 pub const ABS_X: u16 = 0x00;
 pub const ABS_Y: u16 = 0x01;
+/// On TrimUI pads ABS_Z and ABS_RZ are the analog L2/R2 triggers, not a stick.
+pub const ABS_Z: u16 = 0x02;
+pub const ABS_RZ: u16 = 0x05;
+
+/// Forces a keymap by name (`baseos`, `dsos`, `trimui`), over what the system says.
+pub const KEYMAP_VAR: &str = "SLOT_KEYMAP";
 
 pub const STICK_DEADZONE: i32 = 2048;
 pub const DSOS_STICK_DEADZONE: i32 = 900;
@@ -25,6 +31,8 @@ pub enum Keymap {
     #[default]
     BaseOs,
     DsOs,
+    /// TrimUI's stock firmware, whose trimui_inputd turns the Brick's pad into evdev.
+    TrimUi,
 }
 
 impl Keymap {
@@ -35,7 +43,22 @@ impl Keymap {
         }
     }
 
+    pub fn parse(name: &str) -> Option<Keymap> {
+        match name.trim().to_ascii_lowercase().as_str() {
+            "baseos" | "anbernic" | "h700" => Some(Keymap::BaseOs),
+            "dsos" => Some(Keymap::DsOs),
+            "trimui" | "brick" => Some(Keymap::TrimUi),
+            _ => None,
+        }
+    }
+
     pub fn of_system() -> Keymap {
+        if let Some(forced) = std::env::var(KEYMAP_VAR).ok().as_deref().and_then(Keymap::parse) {
+            return forced;
+        }
+        if slot_power::Board::detect().is_trimui() {
+            return Keymap::TrimUi;
+        }
         Keymap::from_is_dsos(crate::baseos::var(IS_DSOS).as_deref())
     }
 
@@ -47,13 +70,17 @@ impl Keymap {
         match self {
             Keymap::BaseOs => code_to_btn(code),
             Keymap::DsOs => dsos_code_to_btn(code),
+            Keymap::TrimUi => trimui_code_to_btn(code),
         }
     }
 
     pub fn to_raw(self, ev: Ev) -> Option<RawEvent> {
         let btn = match ev.kind {
+            // the analog ABS_Z / ABS_RZ own L2/R2 (Triggers); the digital copies chatter
+            EV_KEY if self == Keymap::TrimUi && matches!(ev.code, 0x138 | 0x139) => return None,
             EV_KEY => self.btn(ev.code)?,
-            EV_SW if ev.code == SW_LID => Btn::Lid,
+            // the Brick has no lid
+            EV_SW if ev.code == SW_LID && self != Keymap::TrimUi => Btn::Lid,
             _ => return None,
         };
         match ev.value {
@@ -115,10 +142,11 @@ impl Keymap {
     fn wanted_node(self, device: &Path) -> bool {
         let cap = |file: &str| std::fs::read_to_string(device.join("capabilities").join(file));
         let keys = cap("key").unwrap_or_default();
-        let lid = cap("sw").is_ok_and(|sw| has_bit(&sw, SW_LID));
+        let lid = self != Keymap::TrimUi && cap("sw").is_ok_and(|sw| has_bit(&sw, SW_LID));
         let wanted: &[u16] = match self {
             Keymap::BaseOs => &WANTED,
             Keymap::DsOs => &DSOS_WANTED,
+            Keymap::TrimUi => &TRIMUI_WANTED,
         };
         lid || wanted.iter().any(|bit| has_bit(&keys, *bit))
     }
@@ -130,13 +158,19 @@ impl Keymap {
     pub fn stick_axes(self) -> [u16; 2] {
         match self {
             Keymap::BaseOs => [ABS_LSX, ABS_LSY],
-            Keymap::DsOs => [ABS_X, ABS_Y],
+            // the Brick has no stick; ABS_X/ABS_Y never come from its pad
+            Keymap::DsOs | Keymap::TrimUi => [ABS_X, ABS_Y],
         }
+    }
+
+    /// Whether ABS events on this pad include analog triggers (see Triggers).
+    pub fn analog_triggers(self) -> bool {
+        self == Keymap::TrimUi
     }
 
     fn stick_deadzone(self) -> i32 {
         match self {
-            Keymap::BaseOs => STICK_DEADZONE,
+            Keymap::BaseOs | Keymap::TrimUi => STICK_DEADZONE,
             Keymap::DsOs => DSOS_STICK_DEADZONE,
         }
     }
@@ -157,6 +191,49 @@ pub fn has_left_stick(target: &str) -> bool {
     LEFT_STICK_TARGETS.contains(&target)
 }
 
+/// The TrimUI pad's analog L2/R2 (ABS_Z / ABS_RZ), pressed past half their travel.
+pub struct Triggers {
+    l2_at: i32,
+    r2_at: i32,
+    l2: bool,
+    r2: bool,
+}
+
+impl Triggers {
+    pub fn new(at: i32) -> Self {
+        Triggers::axes(at, at)
+    }
+
+    pub fn axes(l2_at: i32, r2_at: i32) -> Self {
+        Triggers {
+            l2_at: l2_at.max(1),
+            r2_at: r2_at.max(1),
+            l2: false,
+            r2: false,
+        }
+    }
+
+    pub fn feed(&mut self, ev: Ev) -> Option<RawEvent> {
+        if ev.kind != EV_ABS {
+            return None;
+        }
+        let (held, btn, at) = match ev.code {
+            ABS_Z => (&mut self.l2, Btn::L2, self.l2_at),
+            ABS_RZ => (&mut self.r2, Btn::R2, self.r2_at),
+            _ => return None,
+        };
+        let now = ev.value >= at;
+        if now == *held {
+            return None;
+        }
+        *held = now;
+        Some(match now {
+            true => RawEvent::Down(btn),
+            false => RawEvent::Up(btn),
+        })
+    }
+}
+
 #[derive(Default)]
 pub struct Hat {
     keymap: Keymap,
@@ -175,6 +252,7 @@ impl Hat {
 
     pub fn takes(&self, ev: Ev) -> bool {
         match ev.kind {
+            EV_ABS if self.keymap.analog_triggers() => !matches!(ev.code, ABS_Z | ABS_RZ),
             EV_ABS => true,
             EV_KEY => self.key_axis(ev.code).is_some(),
             _ => false,
@@ -320,6 +398,30 @@ pub fn code_to_btn(code: u16) -> Option<Btn> {
         _ => return None,
     })
 }
+
+pub fn trimui_code_to_btn(code: u16) -> Option<Btn> {
+    Some(match code {
+        0x130 => Btn::B,
+        0x131 => Btn::A,
+        0x133 => Btn::Y,
+        0x134 => Btn::X,
+        0x136 => Btn::L1,
+        0x137 => Btn::R1,
+        0x138 => Btn::L2,
+        0x139 => Btn::R2,
+        0x13a => Btn::Select,
+        0x13b => Btn::Start,
+        0x13c => Btn::Menu,
+        115 => Btn::VolUp,
+        114 => Btn::VolDown,
+        116 => Btn::Power,
+        _ => return None,
+    })
+}
+
+const TRIMUI_WANTED: [u16; 14] = [
+    0x130, 0x131, 0x133, 0x134, 0x136, 0x137, 0x138, 0x139, 0x13a, 0x13b, 0x13c, 115, 114, 116,
+];
 
 const WANTED: [u16; 15] = [
     0x130, 0x131, 0x132, 0x133, 0x134, 0x135, 0x136, 0x137, 0x138, 0x13a, 0x13b, 0x162, 115, 114,

@@ -158,6 +158,10 @@ impl Egl {
 
 impl FbdevSurface {
     pub fn new() -> Result<Self, GfxError> {
+        FbdevSurface::with_window(true)
+    }
+
+    pub fn with_window(native_window: bool) -> Result<Self, GfxError> {
         let attr = |name: &str| std::fs::read_to_string(format!("{FB0}/{name}")).ok();
         let hint = attr("mode")
             .as_deref()
@@ -167,10 +171,10 @@ impl FbdevSurface {
             .or_else(|| attr("virtual_size").as_deref().and_then(panel_size))
             .unwrap_or(FALLBACK_PANEL);
         eprintln!("slot: fb0 hint {}x{}", hint.0, hint.1);
-        FbdevSurface::open(hint)
+        FbdevSurface::open(hint, native_window)
     }
 
-    fn open(hint: (u32, u32)) -> Result<Self, GfxError> {
+    fn open(hint: (u32, u32), native_window: bool) -> Result<Self, GfxError> {
         let egl = Egl::load()?;
         let gles = open("libGLESv2.so.2").or_else(|_| open("libGLESv2.so"))?;
         unsafe {
@@ -214,8 +218,11 @@ impl FbdevSurface {
                 height: hint.1 as u16,
             });
             let native = &mut *window as *mut FbdevWindow as Ptr;
-            let mut surface =
-                (egl.create_window_surface)(display, config, native, std::ptr::null());
+            let mut surface = if native_window {
+                (egl.create_window_surface)(display, config, native, std::ptr::null())
+            } else {
+                std::ptr::null_mut()
+            };
             if surface.is_null() {
                 surface = (egl.create_window_surface)(
                     display,

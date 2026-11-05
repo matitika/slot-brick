@@ -630,6 +630,24 @@ tasks:
         tar -cf - -C cores/dsperate shim patches | gzip -n > "{{.OUT}}/System/licenses/dsperate-shim.tar.gz"
       - 'echo "RG DS+ tree ready at {{.OUT}}, copy its contents to the card"'
 
+  dist:trimui:
+    desc: >-
+      Build the card tree for a TrimUI Brick or Brick Pro, OUT defaults to ./dist-trimui. Copy
+      its contents, .tmp_update included, to the root of the TrimUI's SD card
+    vars:
+      OUT: '{{.OUT | default "dist-trimui"}}'
+    cmds:
+      - task: dist:device
+        vars:
+          OUT: '{{.OUT}}'
+      - mkdir -p {{.OUT}}/.tmp_update
+      - cp card/trimui/.tmp_update/updater {{.OUT}}/.tmp_update/updater
+      - chmod +x {{.OUT}}/.tmp_update/updater
+      - mkdir -p {{.OUT}}/trimui/app
+      - cp card/trimui/trimui/app/MainUI card/trimui/trimui/app/runtrimui.sh {{.OUT}}/trimui/app/
+      - chmod +x {{.OUT}}/trimui/app/MainUI {{.OUT}}/trimui/app/runtrimui.sh
+      - 'echo "trimui tree ready at {{.OUT}}, copy its contents (with the hidden .tmp_update) to the SD card root"'
+
   deploy:device:
     desc: Build and push onto a device over adb, then restart it. SD defaults to /mnt/sdcard
     deps: [ core:device, core:gpsp, core:gambatte, fsck:exfat, build:device ]

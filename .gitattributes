@@ -6,3 +6,7 @@ cores/**/*.patch -text
 # These run under the device's /bin/sh. A CRLF checkout (Windows autocrlf) leaves a \r on the
 # shebang and on every command, and the frontend never starts.
 *.sh text eol=lf
+
+# The TrimUI boot scripts have no extension but run under /bin/sh just the same.
+card/trimui/.tmp_update/updater text eol=lf
+card/trimui/trimui/app/MainUI text eol=lf
