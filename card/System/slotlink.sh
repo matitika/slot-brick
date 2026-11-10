@@ -237,19 +237,27 @@ link_warm() {
 }
 
 wifi_start() {
-	[ -f "${1:-}" ] || return 3
+	[ -f "${1:-}" ] || { trace "wifi: no config at ${1:-}"; return 3; }
 	wifi_up
-	[ -d "$NET/wlan0" ] || return 3
+	[ -d "$NET/wlan0" ] || { trace "wifi: no wlan0, interfaces: $(interfaces)"; return 3; }
 	/bin/mkdir -p "$CTRL_DIR"
 	supplicant_stop "$CTRL_DIR" wlan0
 	: > "$WIFI_MARK"
-	$WPA_SUPPLICANT -B -i wlan0 -c "$1" -Dnl80211 >/dev/null 2>&1 || return 3
+	# nl80211 first; the TrimUI Brick's xradio driver may only take the older wext
+	if ! $WPA_SUPPLICANT -B -i wlan0 -c "$1" -Dnl80211 >/dev/null 2>"$RUN/slotwifi-sup.err"; then
+		trace "wifi: wpa_supplicant (nl80211) failed: $(tr '\n' ' ' < "$RUN/slotwifi-sup.err" | sed 's/ $//')"
+		$WPA_SUPPLICANT -B -i wlan0 -c "$1" -Dwext >/dev/null 2>"$RUN/slotwifi-sup.err" || {
+			trace "wifi: wpa_supplicant (wext) failed: $(tr '\n' ' ' < "$RUN/slotwifi-sup.err" | sed 's/ $//')"
+			return 3
+		}
+	fi
 	n=0
 	while [ "$n" -lt 20 ]; do
-		$WPA_CLI -p "$CTRL_DIR" -i wlan0 ping 2>/dev/null | grep -q PONG && return 0
+		$WPA_CLI -p "$CTRL_DIR" -i wlan0 ping 2>/dev/null | grep -q PONG && { trace "wifi: started"; return 0; }
 		sleep 0.25 2>/dev/null || sleep 1
 		n=$((n + 1))
 	done
+	trace "wifi: wpa_supplicant never answered on $CTRL_DIR"
 	return 3
 }
 

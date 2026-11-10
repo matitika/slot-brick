@@ -127,11 +127,18 @@ pub fn texture(
     format: gl::types::GLenum,
     data: Option<&[u8]>,
 ) -> gl::types::GLuint {
+    // A texture made without data starts black: GLES leaves its contents undefined, and the
+    // Brick's PowerVR hands back whatever was in that memory (a green frame around the game,
+    // where the game texture is wider than the picture written into it each frame).
+    let zeros;
     let pixels = match data {
         Some(d) if d.len() >= (w * h * bytes_per_pixel(format)) as usize => {
             d.as_ptr() as *const std::ffi::c_void
         }
-        _ => std::ptr::null(),
+        _ => {
+            zeros = vec![0u8; (w * h * bytes_per_pixel(format)) as usize];
+            zeros.as_ptr() as *const std::ffi::c_void
+        }
     };
     unsafe {
         let mut tex = 0;

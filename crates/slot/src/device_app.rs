@@ -26,6 +26,25 @@ const LOG_SYNC: Duration = Duration::from_secs(1);
 const GPU_READY_VAR: &str = "SLOT_GPU_READY";
 const GPU_WAIT: Duration = Duration::from_secs(10);
 
+/// The CPU's clock policy and temperature, for the Brick's bug reports: on Slot OS nothing
+/// but the kernel's defaults sets them.
+fn log_cpu() {
+    let read = |p: &str| {
+        std::fs::read_to_string(p)
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|_| "?".to_string())
+    };
+    let cpu = "/sys/devices/system/cpu/cpu0/cpufreq";
+    eprintln!(
+        "slot: cpu governor {} at {} kHz ({}..{}), temp {}",
+        read(&format!("{cpu}/scaling_governor")),
+        read(&format!("{cpu}/scaling_cur_freq")),
+        read(&format!("{cpu}/scaling_min_freq")),
+        read(&format!("{cpu}/scaling_max_freq")),
+        read("/sys/class/thermal/thermal_zone0/temp"),
+    );
+}
+
 fn wait_for_gpu() {
     let Some(ready) = std::env::var_os(GPU_READY_VAR).map(PathBuf::from) else {
         return;
@@ -51,6 +70,14 @@ pub fn run() {
     let root = std::env::var_os("SLOT_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(if board.is_trimui() { TRIMUI_CARD } else { CARD }));
+    if board.is_trimui() {
+        log_cpu();
+    }
+    if board.is_trimui() && std::env::var_os("AGS_LINK_TRACE").is_none() {
+        // System/slotlink.sh, which brings Wi-Fi up, logs each step to Logs/slotlink.log:
+        // the Brick's Wi-Fi is new, and a failure is otherwise silent
+        std::env::set_var("AGS_LINK_TRACE", root.join("Logs/slotlink.log"));
+    }
     wait_for_gpu();
     let opened: Result<Box<dyn Surface>, _> = match slot::baseos::var("BASEOS_PLATFORM").as_deref()
     {
