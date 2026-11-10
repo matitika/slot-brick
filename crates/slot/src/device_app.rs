@@ -191,6 +191,8 @@ pub fn run() {
     };
     let (mut frames, mut missed, mut early, mut stale) = (0u32, 0u32, 0u32, 0u32);
     let mut stages = Stages::default();
+    // frames since a game frame capture was asked for (Logs/capture-frame), or 0
+    let mut capture_shown = 0u32;
     loop {
         pacer.wait();
         let began = Instant::now();
@@ -219,6 +221,28 @@ pub fn run() {
         let late = frontend.step_emulator(pacer.period(), STEP_TIMEOUT);
         let stepped = Instant::now();
         frontend.render(&mut compositor, window);
+        if capture_shown >= 30 {
+            capture_shown = 0;
+            slot::frame_capture::done(&root);
+            let (fw, fh) = compositor.frame_size();
+            slot::frame_capture::save_rgba(
+                &root.join("Logs/frame-canvas.png"),
+                fw,
+                fh,
+                &compositor.read_frame(),
+            );
+            slot::frame_capture::save_rgba(
+                &root.join("Logs/frame-window.png"),
+                window.0,
+                window.1,
+                &compositor.read_window(window),
+            );
+            slot::frame_capture::save_fb0(&root);
+        } else if frontend.app().shows_game() && frames % 60 == 0 && capture_shown == 0 {
+            capture_shown = u32::from(slot::frame_capture::wanted(&root));
+        } else if capture_shown > 0 {
+            capture_shown += 1;
+        }
         let rendered = Instant::now();
         let ds_frame = frontend.ds_frame();
         if let (Some(pass), Some(frame)) = (ds.as_mut(), ds_frame) {

@@ -14,6 +14,7 @@ pub mod boot_time;
 pub mod bootlogo;
 pub mod box_art;
 pub mod build_info;
+pub mod frame_capture;
 pub mod cable;
 pub mod card_log;
 pub mod cart_faces;
