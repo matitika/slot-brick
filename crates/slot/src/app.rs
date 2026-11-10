@@ -630,6 +630,9 @@ pub struct App {
     /// False where slot's own updates cannot be installed (TrimUI), so
     /// Check for Updates is not offered.
     self_updates: bool,
+    /// False where the lime placeholder bezel stays off (TrimUI): a 1024x768 screen with no
+    /// frame art yet shows black around the game instead.
+    placeholder_bezels: bool,
     controls: Controls,
     capture: Option<BindCapture>,
     plugged_face: Option<TexId>,
@@ -1128,6 +1131,7 @@ impl App {
             state: SlotState::default(),
             left_stick: false,
             self_updates: true,
+            placeholder_bezels: true,
             controls: Controls::default(),
             capture: None,
             plugged_face: None,
@@ -7580,7 +7584,11 @@ impl App {
     }
 
     pub fn placeholder_bezel(&self) -> Option<[f32; 4]> {
-        self.table_panel().then_some(PLACEHOLDER_BEZEL)
+        (self.placeholder_bezels && self.table_panel()).then_some(PLACEHOLDER_BEZEL)
+    }
+
+    pub fn set_placeholder_bezels(&mut self, on: bool) {
+        self.placeholder_bezels = on;
     }
 
     fn table_panel(&self) -> bool {

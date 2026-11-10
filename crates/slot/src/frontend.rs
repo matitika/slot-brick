@@ -1426,6 +1426,10 @@ impl Frontend {
         self.session.app_mut().set_self_updates(on);
     }
 
+    pub fn set_placeholder_bezels(&mut self, on: bool) {
+        self.session.app_mut().set_placeholder_bezels(on);
+    }
+
     pub fn core_settling(&self) -> bool {
         self.session.core_settling()
     }

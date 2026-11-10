@@ -150,6 +150,8 @@ pub fn run() {
     frontend.set_left_stick(keymap.has_stick(&target));
     // releases are built for the Anbernics and applied by their launcher
     frontend.set_self_updates(!board.is_trimui());
+    // upstream marks where 1024x768 frame art will go in lime; on the Brick, black
+    frontend.set_placeholder_bezels(!board.is_trimui());
     frontend.upload_boot_faces(&mut compositor);
     slot::boot_time::mark("faces");
     frontend.upload_bezel(&mut compositor, window);
