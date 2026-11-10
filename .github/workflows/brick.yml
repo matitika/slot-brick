@@ -1,0 +1,81 @@
+name: brick
+
+# Builds slot for the TrimUI Brick: the stock-firmware card files and the Slot OS card image,
+# as downloads on the run's page.
+on:
+  push:
+    branches: [brick]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  card:
+    name: card files
+    runs-on: ubuntu-24.04-arm
+    container: rust:1-bullseye
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install zip, cmake, Task and Bun
+        run: |
+          set -eu
+          sed -i '/bullseye-security/d' /etc/apt/sources.list
+          apt-get -o Acquire::Check-Valid-Until=false update
+          apt-get install -y --no-install-recommends zip unzip cmake
+          curl -fsSL https://taskfile.dev/install.sh | sh -s -- -b /usr/local/bin
+          curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s "bun-v1.2.6"
+
+      - name: Build the stock-firmware card and the Slot OS card files
+        run: |
+          set -eu
+          task dist:trimui
+          task dist:trimui-os
+          file dist-trimui/System/slot | grep -q aarch64
+          test -f dist-trimui/.tmp_update/updater
+          test -f dist-trimui-os/System/brick-sleep.sh
+
+      - name: Package
+        run: |
+          set -eu
+          (cd dist-trimui && zip -qry ../slot-brick-stock.zip .)
+          tar -czf slot-brick-os-files.tar.gz dist-trimui-os
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: slot-brick-stock
+          path: slot-brick-stock.zip
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: slot-brick-os-files
+          path: slot-brick-os-files.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  image:
+    name: Slot OS image
+    needs: card
+    # as LordNordyx's Slot-Brick builds it
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: slot-brick-os-files
+
+      - name: Build the image
+        run: |
+          set -eu
+          tar -xzf slot-brick-os-files.tar.gz
+          SLOT_OS_VERSION="brick $(git rev-parse --short HEAD)" sh card/trimui/os/build.sh dist-trimui-os
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: slot-os-brick
+          path: dist-os/slot-os.img.xz
+          if-no-files-found: error
+          compression-level: 0
