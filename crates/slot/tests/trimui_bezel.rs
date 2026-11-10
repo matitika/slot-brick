@@ -14,6 +14,8 @@ fn a_1024_by_768_panel_shows_the_lime_placeholder_unless_it_is_turned_off() {
 #[test]
 fn gba_on_a_1024_by_768_panel_offers_fit_integer_and_full_screen() {
     use slot_store::{Platform, Scale};
+    // as device_app sets it on TrimUI (process-wide: this binary's tests all run as a Brick)
+    slot_gfx::set_brick_layout(true);
     let d = tempfile::tempdir().unwrap();
     let mut app = App::boot(d.path());
     app.set_panel((1024, 768));

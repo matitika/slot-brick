@@ -85,15 +85,7 @@ fn gba_on_the_square_panel_is_3x_with_bars_above_and_below() {
 
 #[test]
 fn gba_on_the_ds_plus_is_4x_for_every_setting() {
-    assert_eq!(
-        row((1024, 768), GBA),
-        vec![
-            Some([0.0, 42.0, 1024.0, 683.0]),
-            Some([32.0, 64.0, 960.0, 640.0]),
-            Some([0.0, 42.0, 1024.0, 683.0]),
-            Some([0.0, 0.0, 1024.0, 768.0]),
-        ]
-    );
+    assert_eq!(row((1024, 768), GBA), vec![Some([32.0, 64.0, 960.0, 640.0]); 4]);
 }
 
 #[test]

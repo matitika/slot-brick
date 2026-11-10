@@ -30,18 +30,7 @@ type Entry = ((u32, u32), (u32, u32), Row);
 
 const TABLE: [Entry; 4] = [
     ((720, 720), GBA, [[0.0, 120.0, 720.0, 480.0]; 4]),
-    // GBA's Band (its Fit and SP frame) spans the panel's width, 1024x683; Integer stays a
-    // sharp 4x; Panel stretches to the whole screen
-    (
-        (1024, 768),
-        GBA,
-        [
-            [0.0, 42.0, 1024.0, 683.0],
-            [32.0, 64.0, 960.0, 640.0],
-            [0.0, 42.0, 1024.0, 683.0],
-            [0.0, 0.0, 1024.0, 768.0],
-        ],
-    ),
+    ((1024, 768), GBA, [[32.0, 64.0, 960.0, 640.0]; 4]),
     (
         (720, 720),
         GB,
