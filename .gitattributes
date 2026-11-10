@@ -10,3 +10,4 @@ cores/**/*.patch -text
 # The TrimUI boot scripts have no extension but run under /bin/sh just the same.
 card/trimui/.tmp_update/updater text eol=lf
 card/trimui/trimui/app/MainUI text eol=lf
+card/trimui/os/init text eol=lf

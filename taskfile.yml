@@ -646,7 +646,29 @@ tasks:
       - mkdir -p {{.OUT}}/trimui/app
       - cp card/trimui/trimui/app/MainUI card/trimui/trimui/app/runtrimui.sh {{.OUT}}/trimui/app/
       - chmod +x {{.OUT}}/trimui/app/MainUI {{.OUT}}/trimui/app/runtrimui.sh
+      - cp card/trimui/System/brick-sleep.sh {{.OUT}}/System/
       - 'echo "trimui tree ready at {{.OUT}}, copy its contents (with the hidden .tmp_update) to the SD card root"'
+
+  dist:trimui-os:
+    desc: >-
+      Build slot's card files for Slot OS on the TrimUI Brick, OUT defaults to ./dist-trimui-os.
+      os:trimui turns them into a card image
+    vars:
+      OUT: '{{.OUT | default "dist-trimui-os"}}'
+    cmds:
+      - task: dist:device
+        vars:
+          OUT: '{{.OUT}}'
+      - cp card/trimui/System/brick-sleep.sh {{.OUT}}/System/
+      - 'echo "Slot OS card files ready at {{.OUT}}"'
+
+  os:trimui:
+    desc: >-
+      Build the Slot OS SD card image for the TrimUI Brick (needs Docker) from dist:trimui-os,
+      into dist-os/slot-os.img.xz
+    deps: [ dist:trimui-os ]
+    cmds:
+      - sh card/trimui/os/build.sh dist-trimui-os
 
   deploy:device:
     desc: Build and push onto a device over adb, then restart it. SD defaults to /mnt/sdcard

@@ -1,0 +1,16 @@
+#!/bin/sh
+# busybox udhcpc's event script on Slot OS: applies the lease (from LordNordyx's Slot-Brick).
+PATH=/usr/sbin:/sbin:/usr/bin:/bin
+case "$1" in
+deconfig) ifconfig "$interface" 0.0.0.0 ;;
+bound|renew)
+    ifconfig "$interface" "$ip" ${subnet:+netmask "$subnet"} ${broadcast:+broadcast "$broadcast"}
+    if [ -n "$router" ]; then
+        while route del default gw 0.0.0.0 dev "$interface" 2>/dev/null; do :; done
+        for r in $router; do route add default gw "$r" dev "$interface"; break; done
+    fi
+    if [ -n "$dns" ]; then
+        { [ -z "$domain" ] || echo "search $domain"; for d in $dns; do echo "nameserver $d"; done; } > /etc/resolv.conf 2>/dev/null
+    fi ;;
+esac
+exit 0

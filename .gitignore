@@ -29,3 +29,7 @@
 /.worktrees
 .superpowers/
 /.task/
+/dist-trimui
+/dist-trimui-os
+/dist-os
+/.docker-cache
