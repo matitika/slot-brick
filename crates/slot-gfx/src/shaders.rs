@@ -92,6 +92,9 @@ void main() {
     vec3 c = texture2D(u_game, uv).rgb;
     bool inside = all(greaterThanEqual(uv, u_pic.xy)) && all(lessThan(uv, u_pic.zw));
     if (!inside) {
+        // nothing of the game's out here: black, not whatever the texture holds there (the
+        // Brick's PowerVR showed a green frame; LordNordyx's Slot-Brick found the same)
+        c = vec3(0.0);
     } else if (u_mode > 5.5) {
         vec2 hp = 0.5 * u_uv.zw * u_src / (u_rect.zw * u_fbo);
         vec2 p = uv * u_src;
