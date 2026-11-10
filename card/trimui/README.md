@@ -13,7 +13,11 @@ Slot OS is adapted from LordNordyx's [Slot-Brick](https://github.com/LordNordyx/
 
 ## Building
 
-Both need the device build (`task dist:device`'s prerequisites: Docker on a non-arm64 machine).
+The easiest way: push to a `brick` branch on GitHub (or run the `brick` workflow by hand from
+the Actions tab). The run's page then has `slot-brick-stock` (the stock-firmware card, zipped)
+and `slot-os-brick` (the Slot OS image) to download.
+
+To build locally instead, both need the device build (`task dist:device`'s prerequisites: Docker on a non-arm64 machine).
 
 Stock firmware card files, in `dist-trimui/`:
 
