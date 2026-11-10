@@ -27,6 +27,8 @@ pub struct DeviceInput {
     lid_shut: Option<bool>,
     next_lid_poll: Millis,
     touch: Option<super::touch::Touch>,
+    /// On Slot OS, the Brick's buttons from its GPIO pins (no trimui_inputd to read them).
+    pins: Option<super::brick_pins::BrickPins>,
 }
 
 impl DeviceInput {
@@ -74,6 +76,23 @@ impl DeviceInput {
                 eprintln!("slot: input {name}: {e}");
             }
         }
+        let pins = (keymap == Keymap::TrimUi && slot_power::slot_os())
+            .then(|| match super::brick_pins::BrickPins::open() {
+                Ok(pins) => {
+                    eprintln!("slot: input: Brick buttons read from GPIO");
+                    Some(pins)
+                }
+                Err(e) => {
+                    eprintln!("slot: input: Brick GPIO: {e}");
+                    None
+                }
+            })
+            .flatten();
+        for b in pins.iter().flat_map(|p| p.held_now()) {
+            if !held.contains(&b) {
+                held.push(b);
+            }
+        }
         DeviceInput {
             held,
             pending,
@@ -87,6 +106,7 @@ impl DeviceInput {
             touch: (keymap == Keymap::DsOs)
                 .then(|| super::touch::open(dev, sys))
                 .flatten(),
+            pins,
         }
     }
 
@@ -268,6 +288,9 @@ impl DeviceInput {
 impl InputSource for DeviceInput {
     fn poll(&mut self, now: Millis) -> Vec<RawEvent> {
         let mut out = std::mem::take(&mut *self.pending.lock().unwrap_or_else(|e| e.into_inner()));
+        if let Some(pins) = &mut self.pins {
+            out.extend(pins.poll());
+        }
         if self.hall.is_some() && now >= self.next_lid_poll {
             self.next_lid_poll = now + LID_POLL_MS;
             if let Some(shut) = self.read_lid() {

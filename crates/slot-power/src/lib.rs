@@ -20,6 +20,16 @@ pub use power::Power;
 pub use sim::SimPlatform;
 
 use std::path::{Path, PathBuf};
+
+/// The variable Slot OS's init sets: slot is the Brick's whole system, with no stock firmware
+/// under it. Power off and restart are init's (exit codes SLOT_OS_POWEROFF, SLOT_OS_RESTART).
+pub const SLOT_OS_VAR: &str = "SLOT_OS";
+pub const SLOT_OS_POWEROFF: i32 = 64;
+pub const SLOT_OS_RESTART: i32 = 66;
+
+pub fn slot_os() -> bool {
+    std::env::var_os(SLOT_OS_VAR).is_some_and(|v| !v.is_empty())
+}
 use std::time::Duration;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]

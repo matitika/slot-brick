@@ -1,4 +1,5 @@
 mod bind;
+pub mod brick_pins;
 mod device;
 pub mod evdev;
 #[cfg(feature = "host")]

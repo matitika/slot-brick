@@ -21,6 +21,23 @@ const STEP_TIMEOUT: Duration = Duration::from_millis(12);
 
 const LOG_SYNC: Duration = Duration::from_secs(1);
 
+/// Slot OS's init loads the GPU driver beside slot's own start and makes the file
+/// SLOT_GPU_READY names once it has: the screen waits for it, the fonts and sound do not.
+const GPU_READY_VAR: &str = "SLOT_GPU_READY";
+const GPU_WAIT: Duration = Duration::from_secs(10);
+
+fn wait_for_gpu() {
+    let Some(ready) = std::env::var_os(GPU_READY_VAR).map(PathBuf::from) else {
+        return;
+    };
+    let since = Instant::now();
+    while !ready.exists() && since.elapsed() < GPU_WAIT {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    eprintln!("slot: GPU driver ready after {} ms", since.elapsed().as_millis());
+    slot::boot_time::mark("gpu");
+}
+
 pub fn run() {
     slot::boot_time::mark("start");
     let _ = std::thread::Builder::new()
@@ -34,6 +51,7 @@ pub fn run() {
     let root = std::env::var_os("SLOT_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(if board.is_trimui() { TRIMUI_CARD } else { CARD }));
+    wait_for_gpu();
     let opened: Result<Box<dyn Surface>, _> = match slot::baseos::var("BASEOS_PLATFORM").as_deref()
     {
         Some("rk3568") => KmsSurface::new().map(|s| Box::new(s) as Box<dyn Surface>),

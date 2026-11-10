@@ -94,3 +94,36 @@ fn the_keymap_can_be_named() {
     assert_eq!(Keymap::parse("dsos"), Some(Keymap::DsOs));
     assert_eq!(Keymap::parse("nope"), None);
 }
+
+#[test]
+fn each_brick_pin_is_one_button_and_every_button_is_on_one_pin() {
+    use slot::input::brick_pins::BRICK_PINS;
+    for (i, (pin, btn)) in BRICK_PINS.iter().enumerate() {
+        assert!(
+            BRICK_PINS[i + 1..].iter().all(|(p, _)| p != pin),
+            "pin {pin} twice"
+        );
+        assert!(
+            BRICK_PINS[i + 1..].iter().all(|(_, b)| b != btn),
+            "{btn:?} twice"
+        );
+    }
+}
+
+#[test]
+fn brick_pins_read_low_as_pressed_and_report_each_change_once() {
+    use slot::input::brick_pins::{changes, held_of};
+    let a = held_of(|pin| pin == 108);
+    let ab = held_of(|pin| pin == 108 || pin == 109);
+    assert_eq!(changes(0, a).collect::<Vec<_>>(), [RawEvent::Down(Btn::A)]);
+    assert_eq!(changes(a, ab).collect::<Vec<_>>(), [RawEvent::Down(Btn::B)]);
+    assert_eq!(
+        changes(ab, held_of(|pin| pin == 113)).collect::<Vec<_>>(),
+        [
+            RawEvent::Down(Btn::Up),
+            RawEvent::Up(Btn::A),
+            RawEvent::Up(Btn::B)
+        ]
+    );
+    assert_eq!(changes(a, a).count(), 0);
+}

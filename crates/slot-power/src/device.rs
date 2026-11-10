@@ -95,6 +95,7 @@ const DISP_LCD_SET_BRIGHTNESS: c_ulong = 0x102;
 const TRIMUI_MOTOR_GPIO: &str = "class/gpio/gpio227/value";
 const TRIMUI_MOTOR_VOLTAGE: &str = "class/motor/voltage";
 const TRIMUI_LED_ANIM: &str = "class/led_anim";
+const TRIMUI_SLEEP: &str = "System/brick-sleep.sh";
 
 pub const BOARD_VAR: &str = "SLOT_DEVICE";
 
@@ -175,8 +176,12 @@ pub struct DevicePlatform {
 
 impl DevicePlatform {
     pub fn new(root: PathBuf) -> Self {
-        let platform =
-            DevicePlatform::probe_board(Path::new("/sys"), Path::new("/dev"), root, Board::detect());
+        let platform = DevicePlatform::probe_board(
+            Path::new("/sys"),
+            Path::new("/dev"),
+            root,
+            Board::detect(),
+        );
         match std::env::var_os("DSOS_SLEEP") {
             Some(cmd) if !cmd.is_empty() => platform.with_sleep(PathBuf::from(cmd)),
             _ => platform,
@@ -251,6 +256,9 @@ impl DevicePlatform {
         let motor = Motor::open(sysfs).or_else(|| Motor::gpio(sysfs, board));
         let anim = sysfs.join(TRIMUI_LED_ANIM);
         let led = anim.join("max_scale").is_file().then_some(Led::Anim(anim));
+        // suspend-to-RAM while dozing, on stock and on Slot OS
+        let sleep = root.join(TRIMUI_SLEEP);
+        let sleep_command = sleep.is_file().then_some(sleep);
         DevicePlatform {
             root,
             sysfs: sysfs.to_path_buf(),
@@ -260,11 +268,19 @@ impl DevicePlatform {
             rtc: first_dir(&sysfs.join("class/rtc"), |_| true),
             motor,
             led,
-            sleep_command: None,
+            sleep_command,
             sleeping: None,
             board,
             disp_dark: false,
         }
+    }
+
+    /// On Slot OS init powers off or restarts once slot has ended: it stops what slot started
+    /// (Wi-Fi) and closes the card first.
+    fn hand_to_init(&self, what: &str, code: i32) -> ! {
+        self.breadcrumb(&format!("{what}: handing to Slot OS init ({code})"));
+        let _ = Command::new("sync").status();
+        std::process::exit(code)
     }
 
     pub fn board(&self) -> Board {
@@ -694,7 +710,15 @@ impl Platform for DevicePlatform {
                 return;
             }
         }
-        match Command::new(command).spawn() {
+        // a script on the card runs through sh: FAT and exFAT may not keep its execute bit
+        let spawned = match command.extension().is_some_and(|e| e == "sh") {
+            true => Command::new("/bin/sh")
+                .arg(command)
+                .env("SLOT_ROOT", &self.root)
+                .spawn(),
+            false => Command::new(command).spawn(),
+        };
+        match spawned {
             Ok(child) => self.sleeping = Some(child),
             Err(e) => eprintln!("slot: sleep {}: {e}", command.display()),
         }
@@ -813,6 +837,9 @@ impl Platform for DevicePlatform {
     }
 
     fn restart(&mut self) -> ! {
+        if crate::slot_os() {
+            self.hand_to_init("restart", crate::SLOT_OS_RESTART);
+        }
         self.breadcrumb("restart: reached slot, syncing before the WiFi driver unloads");
         let _ = Command::new("sync").status();
         unload_wifi();
@@ -826,6 +853,10 @@ impl Platform for DevicePlatform {
     }
 
     fn repair_card(&mut self) -> ! {
+        // Slot OS's init checks the card at every start it finds it left in use
+        if crate::slot_os() {
+            self.hand_to_init("repair", crate::SLOT_OS_RESTART);
+        }
         let mount = fs::read_to_string("/proc/mounts")
             .ok()
             .and_then(|m| card_mount_in(&m, &self.root));
@@ -858,6 +889,9 @@ impl Platform for DevicePlatform {
     }
 
     fn poweroff(&mut self) -> ! {
+        if crate::slot_os() {
+            self.hand_to_init("poweroff", crate::SLOT_OS_POWEROFF);
+        }
         self.breadcrumb("poweroff: reached slot, syncing before the WiFi driver unloads");
         let _ = Command::new("sync").status();
         unload_wifi();

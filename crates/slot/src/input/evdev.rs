@@ -53,7 +53,11 @@ impl Keymap {
     }
 
     pub fn of_system() -> Keymap {
-        if let Some(forced) = std::env::var(KEYMAP_VAR).ok().as_deref().and_then(Keymap::parse) {
+        if let Some(forced) = std::env::var(KEYMAP_VAR)
+            .ok()
+            .as_deref()
+            .and_then(Keymap::parse)
+        {
             return forced;
         }
         if slot_power::Board::detect().is_trimui() {

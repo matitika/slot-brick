@@ -105,3 +105,42 @@ fn without_dev_disp_a_backlight_class_still_dims_the_panel() {
     p.set_backlight(0);
     assert_eq!(read(&sys, "class/backlight/backlight0/brightness"), "0");
 }
+
+fn brick_on(sys: &TempDir, dev: &TempDir, card: &TempDir) -> DevicePlatform {
+    DevicePlatform::probe_board(
+        sys.path(),
+        dev.path(),
+        card.path().to_path_buf(),
+        Board::TrimUiBrick,
+    )
+}
+
+#[test]
+fn the_brick_sleeps_through_the_cards_sleep_script() {
+    let (sys, dev) = brick_pro_tree();
+    let card = tempfile::tempdir().unwrap();
+    fs::create_dir_all(card.path().join("System")).unwrap();
+    // no execute bit, as on a FAT card: run through sh
+    fs::write(
+        card.path().join("System/brick-sleep.sh"),
+        "touch \"$SLOT_ROOT/slept\"\n",
+    )
+    .unwrap();
+    let mut brick = brick_on(&sys, &dev, &card);
+    brick.sleep();
+    let slept = card.path().join("slept");
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !slept.exists() && std::time::Instant::now() < until {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(slept.exists(), "the sleep script ran");
+}
+
+#[test]
+fn a_brick_card_without_the_sleep_script_only_dozes() {
+    let (sys, dev) = brick_pro_tree();
+    let card = tempfile::tempdir().unwrap();
+    let mut brick = brick_on(&sys, &dev, &card);
+    brick.sleep();
+    assert!(fs::read_dir(card.path()).unwrap().next().is_none());
+}
