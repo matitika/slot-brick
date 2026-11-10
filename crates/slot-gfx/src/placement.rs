@@ -30,7 +30,18 @@ type Entry = ((u32, u32), (u32, u32), Row);
 
 const TABLE: [Entry; 4] = [
     ((720, 720), GBA, [[0.0, 120.0, 720.0, 480.0]; 4]),
-    ((1024, 768), GBA, [[32.0, 64.0, 960.0, 640.0]; 4]),
+    // GBA's Band (its Fit and SP frame) spans the panel's width, 1024x683; Integer stays a
+    // sharp 4x; Panel stretches to the whole screen
+    (
+        (1024, 768),
+        GBA,
+        [
+            [0.0, 42.0, 1024.0, 683.0],
+            [32.0, 64.0, 960.0, 640.0],
+            [0.0, 42.0, 1024.0, 683.0],
+            [0.0, 0.0, 1024.0, 768.0],
+        ],
+    ),
     (
         (720, 720),
         GB,
@@ -53,6 +64,23 @@ const TABLE: [Entry; 4] = [
     ),
 ];
 
+/// GBA on the TrimUI Brick's 1024x768 panel, by the GBA Scale setting: Fit (Band) fills the
+/// width, Integer stays at a sharp 4x, Full Screen fills the panel. The RG DS+, whose panel is
+/// the same size, keeps TABLE's 4x for every setting.
+const BRICK_GBA: Row = [
+    [0.0, 42.0, 1024.0, 683.0],
+    [32.0, 64.0, 960.0, 640.0],
+    [0.0, 42.0, 1024.0, 683.0],
+    [0.0, 0.0, 1024.0, 768.0],
+];
+
+static BRICK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Lay GBA out for the TrimUI Brick (BRICK_GBA) rather than the RG DS+.
+pub fn set_brick_layout(on: bool) {
+    BRICK.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 pub fn table_placement(canvas: (u32, u32), picture: (u32, u32), sizing: Sizing) -> Option<[f32; 4]> {
     let column = match sizing {
         Sizing::Band => 0,
@@ -60,6 +88,9 @@ pub fn table_placement(canvas: (u32, u32), picture: (u32, u32), sizing: Sizing) 
         Sizing::Fit => 2,
         Sizing::Panel => 3,
     };
+    if BRICK.load(std::sync::atomic::Ordering::Relaxed) && canvas == (1024, 768) && picture == GBA {
+        return Some(BRICK_GBA[column]);
+    }
     TABLE
         .iter()
         .find(|(c, p, _)| *c == canvas && *p == picture)
