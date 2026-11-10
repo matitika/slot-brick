@@ -65,6 +65,8 @@ pub fn run() {
     let audio = std::thread::Builder::new()
         .name("slot-audio-open".into())
         .spawn(slot::audio::opened_sink);
+    let build = slot::build_info::Build::current();
+    eprintln!("slot: build {} {} ({})", build.version, build.hash, build.date);
     let board = Board::detect();
     eprintln!("slot: board {board:?}");
     let root = std::env::var_os("SLOT_ROOT")
