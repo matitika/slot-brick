@@ -144,10 +144,11 @@ pub enum QuickRow {
     GbOverlay,
     GbcOverlay,
     Overlay,
+    Leds,
 }
 
 impl QuickRow {
-    pub const ALL: [QuickRow; 133 + cfg!(feature = "nds") as usize] = [
+    pub const ALL: [QuickRow; 134 + cfg!(feature = "nds") as usize] = [
         QuickRow::FastForward,
         QuickRow::FastForwardSound,
         QuickRow::Screen,
@@ -283,6 +284,7 @@ impl QuickRow {
         QuickRow::GbOverlay,
         QuickRow::GbcOverlay,
         QuickRow::Overlay,
+        QuickRow::Leds,
     ];
 
     pub const MAIN: [QuickRow; 6] = [
@@ -294,7 +296,7 @@ impl QuickRow {
         QuickRow::About,
     ];
 
-    pub const GENERAL: [QuickRow; 11] = [
+    pub const GENERAL: [QuickRow; 12] = [
         QuickRow::Theme,
         QuickRow::Wallpaper,
         QuickRow::WallpaperTint,
@@ -302,6 +304,7 @@ impl QuickRow {
         QuickRow::Recents,
         QuickRow::ShowTitles,
         QuickRow::LidOff,
+        QuickRow::Leds,
         QuickRow::KidMode,
         QuickRow::KidShelf,
         QuickRow::Wifi,
@@ -543,6 +546,7 @@ impl QuickRow {
             | QuickRow::ShelfMode
             | QuickRow::ShowTitles
             | QuickRow::LidOff
+            | QuickRow::Leds
             | QuickRow::KidMode
             | QuickRow::KidShelf
             | QuickRow::Wifi => &QuickRow::GENERAL,
@@ -721,6 +725,7 @@ impl QuickRow {
             QuickRow::ExitGame => "Exit Game",
             QuickRow::General => "General",
             QuickRow::LidOff => "Lid Power Off",
+            QuickRow::Leds => "LEDs",
             QuickRow::KidMode => "Kid Mode",
             QuickRow::KidShelf => "Kid Shelf",
             QuickRow::FetchArt => "Fetch Missing Art",
@@ -987,10 +992,11 @@ pub enum QuickValue {
     Always,
     PowerOn,
     Never,
+    Battery,
 }
 
 impl QuickValue {
-    pub const ALL: [QuickValue; 57] = [
+    pub const ALL: [QuickValue; 58] = [
         QuickValue::Speed1_5,
         QuickValue::Speed2,
         QuickValue::Speed3,
@@ -1048,6 +1054,7 @@ impl QuickValue {
         QuickValue::Always,
         QuickValue::PowerOn,
         QuickValue::Never,
+        QuickValue::Battery,
     ];
 
     pub const LEVELS: [QuickValue; 16] = [
@@ -1107,6 +1114,7 @@ impl QuickValue {
             QuickValue::Always => "Always",
             QuickValue::PowerOn => "Power On",
             QuickValue::Never => "Never",
+            QuickValue::Battery => "Battery",
             QuickValue::Low => "25%",
             QuickValue::Medium => "45%",
             QuickValue::High => "65%",

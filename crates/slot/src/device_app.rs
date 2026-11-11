@@ -152,6 +152,8 @@ pub fn run() {
     frontend.set_self_updates(!board.is_trimui());
     // upstream marks where 1024x768 frame art will go in lime; on the Brick, black
     frontend.set_placeholder_bezels(!board.is_trimui());
+    // the Brick's LEDs: Settings → General → LEDs
+    frontend.set_led_modes(board.is_trimui());
     // GBA's Scale setting picks fit, 4x or full screen on the Brick's panel
     slot_gfx::set_brick_layout(board.is_trimui());
     frontend.upload_boot_faces(&mut compositor);

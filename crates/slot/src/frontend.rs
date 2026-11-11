@@ -1422,6 +1422,10 @@ impl Frontend {
         self.session.app_mut().set_left_stick(present);
     }
 
+    pub fn set_led_modes(&mut self, on: bool) {
+        self.session.app_mut().set_led_modes(on);
+    }
+
     pub fn set_self_updates(&mut self, on: bool) {
         self.session.app_mut().set_self_updates(on);
     }

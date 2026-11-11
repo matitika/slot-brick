@@ -94,6 +94,7 @@ fn the_rows_run_in_the_order_the_user_chose() {
             "Recents",
             "Game Titles",
             "Lid Power Off",
+            "LEDs",
             "Kid Mode",
             "Kid Shelf",
             "Wi-Fi",
@@ -313,6 +314,7 @@ fn the_values_read_as_the_menu_prints_them() {
             "Always",
             "Power On",
             "Never",
+            "Battery",
         ]
     );
     assert_eq!(QuickValue::flag(true), QuickValue::On);

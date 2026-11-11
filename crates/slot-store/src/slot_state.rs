@@ -121,6 +121,43 @@ impl Appearance {
     }
 }
 
+/// The handheld's LEDs, on devices that let slot choose (the TrimUI Brick).
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
+pub enum LedMode {
+    /// Always dark.
+    Off,
+    /// Dark, but for the battery: low, charging, charged.
+    #[default]
+    Battery,
+    /// Lit while slot runs, the battery's colours when it has news.
+    Always,
+}
+
+impl LedMode {
+    pub fn key(self) -> &'static str {
+        match self {
+            LedMode::Off => "off",
+            LedMode::Battery => "battery",
+            LedMode::Always => "always",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<LedMode> {
+        match s.trim() {
+            "off" => Some(LedMode::Off),
+            "battery" => Some(LedMode::Battery),
+            "always" => Some(LedMode::Always),
+            _ => None,
+        }
+    }
+
+    pub fn step(self, right: bool) -> LedMode {
+        const ORDER: [LedMode; 3] = [LedMode::Off, LedMode::Battery, LedMode::Always];
+        let at = ORDER.iter().position(|m| *m == self).unwrap_or(1);
+        ORDER[if right { (at + 1) % 3 } else { (at + 2) % 3 }]
+    }
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
 pub enum WallpaperTint {
     #[default]
@@ -474,6 +511,7 @@ pub struct SlotState {
     pub gb_core: Core,
     pub left_stick_dpad: bool,
     pub lid_off_min: Option<u8>,
+    pub leds: LedMode,
     pub bezel_gba: BezelPick,
     pub bezel_gb: BezelPick,
     pub bezel_gbc: BezelPick,
@@ -661,6 +699,7 @@ impl Default for SlotState {
             gb_core: Core::Gambatte,
             left_stick_dpad: true,
             lid_off_min: None,
+            leds: LedMode::Battery,
             bezel_gba: BezelPick::Ags102,
             bezel_gb: BezelPick::Ags102,
             bezel_gbc: BezelPick::Ags102,
@@ -786,6 +825,9 @@ pub fn write_slot_state(root: &Path, s: &SlotState) -> std::io::Result<()> {
     if let Some(min) = s.lid_off_min {
         text.push_str(&format!("lid_off_min={min}\n"));
     }
+    if s.leds != LedMode::default() {
+        text.push_str(&format!("leds={}\n", s.leds.key()));
+    }
     text.push_str(&format!("bezel_gba={}\n", s.bezel_gba.key()));
     text.push_str(&format!("bezel_gb={}\n", s.bezel_gb.key()));
     text.push_str(&format!("bezel_gbc={}\n", s.bezel_gbc.key()));
@@ -866,6 +908,7 @@ fn parse(text: &str) -> Option<SlotState> {
     let mut gb_core = None;
     let mut left_stick_dpad = None;
     let mut lid_off_min = None;
+    let mut leds = None;
     let mut bezel_gba = None;
     let mut bezel_gb = None;
     let mut bezel_gbc = None;
@@ -933,6 +976,7 @@ fn parse(text: &str) -> Option<SlotState> {
             "gb_core" => gb_core = Core::parse(value).filter(|c| c.runs(Platform::Gb)),
             "left_stick_dpad" => left_stick_dpad = flag(value),
             "lid_off_min" => lid_off_min = value.parse().ok().filter(|m| LID_OFF_MIN.contains(m)),
+            "leds" => leds = LedMode::parse(value),
             "bezel_gba" => bezel_gba = Some(BezelPick::parse(value)),
             "bezel_gb" => bezel_gb = Some(BezelPick::parse(value)),
             "bezel_gbc" => bezel_gbc = Some(BezelPick::parse(value)),
@@ -1010,6 +1054,7 @@ fn parse(text: &str) -> Option<SlotState> {
         gb_core: gb_core.unwrap_or(Core::Mgba),
         left_stick_dpad: left_stick_dpad.unwrap_or(fallback.left_stick_dpad),
         lid_off_min,
+        leds: leds.unwrap_or(fallback.leds),
         bezel_gba: bezel_gba.unwrap_or(fallback.bezel_gba),
         bezel_gb: bezel_gb.unwrap_or(fallback.bezel_gb),
         bezel_gbc: bezel_gbc.unwrap_or(fallback.bezel_gbc),

@@ -20,7 +20,9 @@ fn brick_pro_tree() -> (TempDir, TempDir) {
     fs::write(motor.join("voltage"), "0").unwrap();
     let anim = sys.path().join("class/led_anim");
     fs::create_dir_all(&anim).unwrap();
-    fs::write(anim.join("max_scale"), "0").unwrap();
+    for f in ["max_scale", "max_scale_f1f2", "max_scale_lr", "effect_m", "effect_f1", "effect_f2", "effect_lr"] {
+        fs::write(anim.join(f), "0").unwrap();
+    }
     (sys, dev)
 }
 
@@ -72,11 +74,12 @@ fn the_brick_pro_rumbles_through_its_gpio_capped_at_two_and_a_half_volts() {
 }
 
 #[test]
-fn the_top_bar_stays_dark_while_running_and_lights_when_low() {
+fn the_top_bar_lights_by_state_and_goes_dark_when_off() {
+    // the app passes Off when the LEDs setting wants them dark (Battery mode while running)
     let (sys, dev) = brick_pro_tree();
     let mut p = brick_pro(&sys, &dev);
     p.set_led(LedState::Running);
-    assert_eq!(read(&sys, "class/led_anim/max_scale"), "0");
+    assert_eq!(read(&sys, "class/led_anim/effect_rgb_hex_m"), "00FF00");
     p.set_led(LedState::Low);
     assert_eq!(read(&sys, "class/led_anim/effect_rgb_hex_m"), "FF0000");
     assert_ne!(read(&sys, "class/led_anim/max_scale"), "0");
@@ -143,4 +146,23 @@ fn a_brick_card_without_the_sleep_script_only_dozes() {
     let mut brick = brick_on(&sys, &dev, &card);
     brick.sleep();
     assert!(fs::read_dir(card.path()).unwrap().next().is_none());
+}
+
+#[test]
+fn every_led_zone_of_the_brick_follows_the_state() {
+    let (sys, dev) = brick_pro_tree();
+    let mut brick = brick_pro(&sys, &dev);
+    // the firmware leaves F1/F2 lit: off must darken them too
+    fs::write(sys.path().join("class/led_anim/max_scale_f1f2"), "60").unwrap();
+    brick.set_led(LedState::Off);
+    for scale in ["max_scale", "max_scale_f1f2", "max_scale_lr"] {
+        assert_eq!(read(&sys, &format!("class/led_anim/{scale}")), "0", "{scale}");
+    }
+    brick.set_led(LedState::Running);
+    for zone in ["m", "f1", "f2", "lr"] {
+        assert_eq!(read(&sys, &format!("class/led_anim/effect_rgb_hex_{zone}")), "00FF00", "{zone}");
+    }
+    for scale in ["max_scale", "max_scale_f1f2", "max_scale_lr"] {
+        assert_ne!(read(&sys, &format!("class/led_anim/{scale}")), "0", "{scale}");
+    }
 }

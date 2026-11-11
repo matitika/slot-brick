@@ -8,7 +8,7 @@ use slot_power::{Battery, Charge, LedState, LidPolicy, Power, RepairResult};
 use slot_retro::LinkChannel;
 use slot_store::{
     format_stamp, parse_stamp, read_slot_state, scan, write_slot_state, AutoLoad, BezelPick, Blending, Cart,
-    Collection, Core, GbColors, KidMode, Platform, Recent, Scale, Shader, ShelfMode, ShotDir, ShotEntry,
+    Collection, Core, GbColors, KidMode, LedMode, Platform, Recent, Scale, Shader, ShelfMode, ShotDir, ShotEntry,
     SlotState, StateEntry,
     StateRing, Stretch, WallpaperPick, WallpaperTint, BLUE_LIGHT_MAX, BRIGHTNESS_MAX, CONTRAST_MAX,
     DIM_MAX, FF_SPEEDS, RING_MAX, SATURATION_MAX, SUNLIGHT_MAX, VOLUME_MAX,
@@ -630,6 +630,9 @@ pub struct App {
     /// False where slot's own updates cannot be installed (TrimUI), so
     /// Check for Updates is not offered.
     self_updates: bool,
+    /// True where slot picks how the LEDs behave (the TrimUI Brick): Settings → General → LEDs
+    /// is shown, and the lid setting, for a handheld with no lid, is not.
+    led_modes: bool,
     /// False where the lime placeholder bezel stays off (TrimUI): a 1024x768 screen with no
     /// frame art yet shows black around the game instead.
     placeholder_bezels: bool,
@@ -1131,6 +1134,7 @@ impl App {
             state: SlotState::default(),
             left_stick: false,
             self_updates: true,
+            led_modes: false,
             placeholder_bezels: true,
             controls: Controls::default(),
             capture: None,
@@ -2601,6 +2605,11 @@ impl App {
         if !self.self_updates {
             hidden.push(QuickRow::CheckUpdates);
         }
+        if self.led_modes {
+            hidden.push(QuickRow::LidOff);
+        } else {
+            hidden.push(QuickRow::Leds);
+        }
         if !self.state.turbo {
             hidden.extend([QuickRow::GameTurboA, QuickRow::GameTurboB]);
         }
@@ -2727,6 +2736,11 @@ impl App {
 
     pub fn quick_value(&self, row: QuickRow) -> Option<QuickValue> {
         match row {
+            QuickRow::Leds => Some(match self.state.leds {
+                LedMode::Off => QuickValue::Off,
+                LedMode::Battery => QuickValue::Battery,
+                LedMode::Always => QuickValue::Always,
+            }),
             QuickRow::Shader
             | QuickRow::ColourCorrection
             | QuickRow::PlayBrightness
@@ -3583,6 +3597,11 @@ impl App {
         }
         if !self.self_updates {
             hidden.push(QuickRow::CheckUpdates);
+        }
+        if self.led_modes {
+            hidden.push(QuickRow::LidOff);
+        } else {
+            hidden.push(QuickRow::Leds);
         }
         if !self.state.turbo {
             hidden.extend([QuickRow::GameTurboA, QuickRow::GameTurboB]);
@@ -4670,6 +4689,11 @@ impl App {
         self.left_stick = present;
     }
 
+    pub fn set_led_modes(&mut self, on: bool) {
+        self.led_modes = on;
+        self.last_led = None;
+    }
+
     pub fn set_self_updates(&mut self, on: bool) {
         self.self_updates = on;
     }
@@ -5402,6 +5426,7 @@ impl App {
 
     fn open_quick_row(&mut self, row: QuickRow) {
         match row {
+            QuickRow::Leds => {}
             QuickRow::DateTime => {
                 self.phase = clock_screen(self.utc_secs(), &self.state, self.has_saved(), true);
             }
@@ -5724,9 +5749,15 @@ impl App {
             self.persist();
             return;
         }
+        if row == QuickRow::Leds {
+            self.state.leds = self.state.leds.step(right);
+            self.persist();
+            return;
+        }
         let gba_shaders = self.gba_shaders();
         let s = &mut self.state;
         match row {
+            QuickRow::Leds => {}
             QuickRow::FastForward => {
                 let to = ff_next(s.ff_speed, right);
                 if to == s.ff_speed {
@@ -6640,14 +6671,22 @@ impl App {
     }
 
     pub fn led_state(&self) -> LedState {
-        let Some(b) = self.battery else {
-            return LedState::Running;
+        let state = match self.battery {
+            None => LedState::Running,
+            Some(b) => match b.charge {
+                Charge::Charging => LedState::Charging,
+                Charge::Full => LedState::Charged,
+                _ if b.percent <= BATTERY_LOW => LedState::Low,
+                _ => LedState::Running,
+            },
         };
-        match b.charge {
-            Charge::Charging => LedState::Charging,
-            Charge::Full => LedState::Charged,
-            _ if b.percent <= BATTERY_LOW => LedState::Low,
-            _ => LedState::Running,
+        if !self.led_modes {
+            return state;
+        }
+        match (self.state.leds, state) {
+            (LedMode::Off, _) => LedState::Off,
+            (LedMode::Battery, LedState::Running) => LedState::Off,
+            _ => state,
         }
     }
 
