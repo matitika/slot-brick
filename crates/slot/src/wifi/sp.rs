@@ -229,12 +229,19 @@ impl<R: Run> Backend for Wpa<R> {
                     Some(pid) => {
                         self.runner.run("kill", &["-USR1", &pid]);
                     }
-                    None => self.runner.spawn(
-                        UDHCPC,
-                        &[
+                    None => {
+                        let mut args = vec![
                             "-i", "wlan0", "-S", "-t", "5", "-T", "7", "-b", "-p", PIDFILE,
-                        ],
-                    ),
+                        ];
+                        // a card's own lease script (the Brick's, which logs each step), in
+                        // place of the system's
+                        let own = self.script.with_file_name("udhcpc.script");
+                        let own = own.to_string_lossy().into_owned();
+                        if std::path::Path::new(&own).is_file() {
+                            args.extend(["-s", own.as_str()]);
+                        }
+                        self.runner.spawn(UDHCPC, &args)
+                    }
                 }
                 self.renewed = true;
             }

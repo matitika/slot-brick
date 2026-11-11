@@ -646,7 +646,7 @@ tasks:
       - mkdir -p {{.OUT}}/trimui/app
       - cp card/trimui/trimui/app/MainUI card/trimui/trimui/app/runtrimui.sh {{.OUT}}/trimui/app/
       - chmod +x {{.OUT}}/trimui/app/MainUI {{.OUT}}/trimui/app/runtrimui.sh
-      - cp card/trimui/System/brick-sleep.sh {{.OUT}}/System/
+      - cp card/trimui/System/brick-sleep.sh card/trimui/System/udhcpc.script {{.OUT}}/System/
       - 'echo "trimui tree ready at {{.OUT}}, copy its contents (with the hidden .tmp_update) to the SD card root"'
 
   dist:trimui-os:
@@ -659,7 +659,7 @@ tasks:
       - task: dist:device
         vars:
           OUT: '{{.OUT}}'
-      - cp card/trimui/System/brick-sleep.sh {{.OUT}}/System/
+      - cp card/trimui/System/brick-sleep.sh card/trimui/System/udhcpc.script {{.OUT}}/System/
       - 'echo "Slot OS card files ready at {{.OUT}}"'
 
   os:trimui:

@@ -1,0 +1,30 @@
+#!/bin/sh
+# busybox udhcpc's lease script for the TrimUI Brick, run by slot (-s): applies the lease to
+# wlan0 and says each step on stderr, which goes to slot's log (Logs/slot.log).
+# From LordNordyx's Slot-Brick (github.com/LordNordyx/Slot-Brick, GPL-3.0).
+PATH=/usr/sbin:/sbin:/usr/bin:/bin
+say() { echo "udhcpc.script: $(cut -d' ' -f1 /proc/uptime) s $*" >&2; }
+case "$1" in
+deconfig)
+    say "deconfig $interface"
+    ifconfig "$interface" 0.0.0.0 || say "ifconfig $interface 0.0.0.0 failed"
+    ;;
+bound|renew)
+    say "$1 $interface $ip/${subnet:-?} router ${router:-none} dns ${dns:-none}"
+    ifconfig "$interface" "$ip" ${subnet:+netmask "$subnet"} ${broadcast:+broadcast "$broadcast"} \
+        || say "ifconfig $interface $ip failed"
+    if [ -n "$router" ]; then
+        while route del default gw 0.0.0.0 dev "$interface" 2>/dev/null; do :; done
+        for r in $router; do route add default gw "$r" dev "$interface" || say "route via $r failed"; break; done
+    fi
+    if [ -n "$dns" ]; then
+        { [ -z "$domain" ] || echo "search $domain"; for d in $dns; do echo "nameserver $d"; done; } > /etc/resolv.conf \
+            || say "resolv.conf not written"
+    fi
+    say "$interface now: $(ifconfig "$interface" 2>&1 | grep -o 'inet addr:[0-9.]*')"
+    ;;
+*)
+    say "$1 $interface"
+    ;;
+esac
+exit 0

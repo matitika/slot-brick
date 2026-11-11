@@ -11,3 +11,5 @@ cores/**/*.patch -text
 card/trimui/.tmp_update/updater text eol=lf
 card/trimui/trimui/app/MainUI text eol=lf
 card/trimui/os/init text eol=lf
+card/trimui/System/udhcpc.script text eol=lf
+card/trimui/os/udhcpc.script text eol=lf

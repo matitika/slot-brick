@@ -226,7 +226,8 @@ impl Core {
         let status = self.backend.status();
         if status != self.snap.status {
             eprintln!(
-                "slot: wifi: {:?}, ssid {}, ip {}",
+                "slot: wifi: at {:.1} s {:?}, ssid {}, ip {}",
+                crate::boot_time::ms() / 1000.0,
                 status.state,
                 status.ssid.as_deref().map_or("none", |_| "set"),
                 status.ip.as_deref().unwrap_or("none")
