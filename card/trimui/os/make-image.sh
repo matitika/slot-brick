@@ -70,6 +70,9 @@ done
 for applet in udhcpc ip rfkill; do ln -sf /bin/busybox "$R/sbin/$applet"; done
 mkdir -p "$R/usr/share/udhcpc"
 install -m 755 "$OS/udhcpc.script" "$R/usr/share/udhcpc/default.script"
+# Debian's busybox looks for it under /etc instead: both, so either build finds one
+mkdir -p "$R/etc/udhcpc"
+install -m 755 "$OS/udhcpc.script" "$R/etc/udhcpc/default.script"
 # glibc's loader where every aarch64 binary looks for it.
 ln -sf aarch64-linux-gnu/ld-linux-aarch64.so.1 "$R/lib/ld-linux-aarch64.so.1"
 for f in libEGL.so libGLESv2.so libIMGegl.so libglslcompiler.so libpvrNULL_WSEGL.so libsrv_um.so libusc.so; do

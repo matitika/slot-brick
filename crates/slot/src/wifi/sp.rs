@@ -222,7 +222,15 @@ impl<R: Run> Backend for Wpa<R> {
                 ip: None,
             };
         };
-        let s = parse_status(&text);
+        let mut s = parse_status(&text);
+        if s.state == State::Completed && s.ip.is_none() {
+            // the address on wlan0 itself, where wpa_supplicant does not report one (the
+            // Brick's Slot OS)
+            s.ip = self
+                .runner
+                .run(IP, &["-4", "addr", "show", "dev", "wlan0"])
+                .and_then(|out| inet_of(&out));
+        }
         if s.state == State::Completed {
             if !self.renewed {
                 match self.dhcp_running() {
@@ -240,6 +248,7 @@ impl<R: Run> Backend for Wpa<R> {
                         if std::path::Path::new(&own).is_file() {
                             args.extend(["-s", own.as_str()]);
                         }
+                        eprintln!("slot: wifi: {UDHCPC} {}", args.join(" "));
                         self.runner.spawn(UDHCPC, &args)
                     }
                 }
@@ -346,4 +355,14 @@ impl<R: Run> Backend for Wpa<R> {
 
 pub fn device_wifi(root: &Path) -> Wifi {
     Wifi::spawn(Box::new(Wpa::new(System, root.to_path_buf())))
+}
+
+/// The IPv4 address in `ip -4 addr show` output: `inet 192.168.1.20/24 ...`.
+pub fn inet_of(out: &str) -> Option<String> {
+    out.split_whitespace()
+        .skip_while(|w| *w != "inet")
+        .nth(1)
+        .and_then(|a| a.split('/').next())
+        .filter(|a| !a.is_empty() && !a.starts_with("0.0.0.0"))
+        .map(str::to_string)
 }

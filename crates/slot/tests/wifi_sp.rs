@@ -415,3 +415,12 @@ fn disconnecting_then_connecting_reconnects_first() {
         .collect();
     assert_eq!(c, ["disconnect", "reconnect", "select_network 1"]);
 }
+
+#[test]
+fn the_address_on_wlan0_is_read_from_ip_addr() {
+    use slot::wifi::sp::inet_of;
+    let out = "3: wlan0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500\n    inet 192.168.88.45/24 brd 192.168.88.255 scope global wlan0\n";
+    assert_eq!(inet_of(out).as_deref(), Some("192.168.88.45"));
+    assert_eq!(inet_of("3: wlan0: <BROADCAST> mtu 1500\n"), None);
+    assert_eq!(inet_of("    inet 0.0.0.0/0 scope global wlan0\n"), None);
+}
