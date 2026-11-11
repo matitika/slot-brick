@@ -145,7 +145,7 @@ impl Core {
                         Intent::Disconnected => self.backend.disconnect(),
                         Intent::Auto => {}
                     }
-                    self.snap.status = self.backend.status();
+                    self.poll_status();
                     self.next_status = Some(now + self.status_gap());
                     if self.scans {
                         self.next_scan = Some(now);
@@ -220,6 +220,21 @@ impl Core {
         self.publish();
     }
 
+    /// The status from the backend, with each change in slot.log: Wi-Fi on new hardware (the
+    /// Brick) otherwise fails without a word between joining and getting an address.
+    fn poll_status(&mut self) {
+        let status = self.backend.status();
+        if status != self.snap.status {
+            eprintln!(
+                "slot: wifi: {:?}, ssid {}, ip {}",
+                status.state,
+                status.ssid.as_deref().map_or("none", |_| "set"),
+                status.ip.as_deref().unwrap_or("none")
+            );
+        }
+        self.snap.status = status;
+    }
+
     fn release(&mut self, block: bool) {
         self.end_attempt();
         self.backend.stop();
@@ -289,7 +304,7 @@ impl Core {
             return;
         }
         if self.next_status.is_some_and(|t| now >= t) {
-            self.snap.status = self.backend.status();
+            self.poll_status();
             if let Some(a) = self.attempt.as_mut() {
                 let temp = self.backend.temp_disabled(a.id);
                 let seen = self

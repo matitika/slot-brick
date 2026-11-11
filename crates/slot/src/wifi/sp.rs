@@ -30,14 +30,18 @@ impl Run for System {
 
     fn spawn(&mut self, program: &str, args: &[&str]) {
         use std::process::{Command, Stdio};
-        if let Ok(mut child) = Command::new(program)
+        // its complaints (the DHCP client's) go to slot.log beside slot's own
+        match Command::new(program)
             .args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::inherit())
             .spawn()
         {
-            std::thread::spawn(move || child.wait());
+            Ok(mut child) => {
+                std::thread::spawn(move || child.wait());
+            }
+            Err(e) => eprintln!("slot: wifi: {program}: {e}"),
         }
     }
 
