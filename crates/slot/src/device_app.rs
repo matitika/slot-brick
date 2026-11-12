@@ -169,9 +169,21 @@ pub fn run() {
     let _ = std::thread::Builder::new()
         .name("slot-bootlogo".into())
         .spawn(move || {
-            // the boot logo partition is the Anbernics'; TrimUI keeps its own
+            // the Anbernics' boot logo lives on its own partition; on Slot OS it is the card's
+            // bootlogo.bmp; stock TrimUI firmware keeps its own, left alone
             if !board.is_trimui() {
                 slot::bootlogo::refresh(&card);
+            } else if slot_power::slot_os() {
+                match slot::bootlogo::refresh_slot_os(&card) {
+                    Ok(slot::bootlogo::Outcome::Installed) => {
+                        eprintln!("slot: bootlogo: set, shown from the next start")
+                    }
+                    Ok(slot::bootlogo::Outcome::Invalid) => eprintln!(
+                        "slot: bootlogo: Config/bootlogo.bmp is not a 24- or 32-bit bmp, left alone"
+                    ),
+                    Ok(_) => {}
+                    Err(e) => eprintln!("slot: bootlogo: {e}"),
+                }
             }
             slot::root::sweep_temps(&card);
         });

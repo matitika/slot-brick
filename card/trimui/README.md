@@ -46,6 +46,14 @@ once, about 300 MB, checked against `card/trimui/os/sources.txt`):
 3. Put your games on the card (in a computer, the card's partition is the FAT one named
    SLOT).
 
+## Boot logo (Slot OS)
+
+The logo shown while the Brick starts is `bootlogo.bmp` at the card's root. To change it, put
+a 24- or 32-bit `.bmp` at `Config/bootlogo.bmp`, from Boot Logo Studio (any device size) or
+Gamebit's Boot Logo page: slot fits it to the Brick's 1024×768 screen and installs it, so it
+shows from the start after next. Delete it (Gamebit: Restore) to get the Slot OS logo back.
+On stock firmware the Brick keeps TrimUI's own logo.
+
 ## When something goes wrong
 
 Logs are on the card in `Logs/`:
