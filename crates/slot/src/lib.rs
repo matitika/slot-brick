@@ -10,6 +10,7 @@ pub mod art;
 pub mod audio;
 pub mod baseos;
 pub mod bezel;
+pub mod brick_power;
 pub mod boot_time;
 pub mod bootlogo;
 pub mod box_art;

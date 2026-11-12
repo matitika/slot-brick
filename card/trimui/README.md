@@ -63,7 +63,15 @@ Logs are on the card in `Logs/`:
 - `os.log`: Slot OS only: the kernel log, the GPU and Wi-Fi drivers, the mixer.
 - `boot-times.log`: Slot OS only: when each boot step finished.
 - `sleep.log`: each suspend and resume.
+- `power.log`: the CPU clocks slot picks (adapted from LordNordyx's Slot-Brick): in games it
+  raises them as soon as frames run late or the sound runs dry, and lowers them when there's
+  room to spare; on the shelf and asleep it keeps them low. An empty file `DISABLE_POWER_SAVING`
+  at the card's root leaves the CPU to the system instead.
 - `slot-session.log`: stock firmware only: each start of slot.
+
+To see what slows a game down, put an empty file `System/trace-latency.on` on the card: every
+600 frames `slot.log` then gets a `pace:` line with how long each step of a frame took, how many
+frames missed the screen, and the CPU's clock and temperature.
 
 Set `SLOT_TRACE_INPUT=1` (stock: in `.tmp_update/updater`) to log every button event to
 `Logs/input-trace.log`.

@@ -42,6 +42,8 @@ pub struct Frontend {
     grounds: Option<(TexId, Option<TexId>, (u32, u32))>,
     start: Instant,
     last: Instant,
+    /// When a button was last pressed: the Brick's CPU stays up while the shelf is in use.
+    last_input: Instant,
     draws: Vec<Draw>,
     ds: crate::ds_view::DsView,
     polaroid_texes: Vec<TexId>,
@@ -562,6 +564,7 @@ impl Frontend {
             session,
             start: now,
             last: now,
+            last_input: now,
             draws: Vec::new(),
             ds: Default::default(),
             polaroid_texes: Vec::new(),
@@ -1258,6 +1261,41 @@ impl Frontend {
         self.session.step_emulator(present, timeout)
     }
 
+    /// What the Brick's CPU is wanted for now (see brick_power), after LordNordyx's Slot-Brick.
+    pub fn power_mode(&self) -> crate::brick_power::Mode {
+        use crate::app::Phase;
+        use crate::brick_power::Mode;
+        let app = self.app();
+        if matches!(app.phase(), Phase::Doze { .. }) {
+            return Mode::Standby;
+        }
+        if self.rebuild.is_some()
+            || app.link_active()
+            || self.session.actually_fast_forwarding()
+            || self.session.actually_rewinding()
+        {
+            return Mode::Boost;
+        }
+        match app.phase() {
+            Phase::Playing { .. }
+                if self.session.observed_speed() == Some(crate::emu::Speed::Normal) =>
+            {
+                Mode::Game
+            }
+            Phase::Shelf | Phase::QuickMenu { .. }
+                if self.last_input.elapsed() > Duration::from_secs(2) =>
+            {
+                Mode::Menu
+            }
+            _ => Mode::Boost,
+        }
+    }
+
+    /// Audio the core couldn't supply in time, so far: the Brick's CPU rises when it grows.
+    pub fn audio_underruns(&self) -> u64 {
+        self.session.audio_ring().underruns()
+    }
+
     pub fn rebuilding_labels(&self) -> bool {
         self.rebuild.is_some()
     }
@@ -1353,6 +1391,9 @@ impl Frontend {
     pub fn advance(&mut self, input: &mut dyn InputSource) {
         let now = self.now();
         let events = input.poll(now);
+        if !events.is_empty() {
+            self.last_input = Instant::now();
+        }
         if self.rebuild.as_ref().is_some_and(Rebuild::on_screen) {
             return;
         }

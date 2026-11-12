@@ -45,6 +45,22 @@ fn log_cpu() {
     );
 }
 
+/// The CPU's clock now and the warmest thermal zone, for the pace trace.
+fn cpu_now() -> String {
+    let khz = std::fs::read_to_string("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq")
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|_| "?".into());
+    let temp = (0..8)
+        .filter_map(|i| {
+            std::fs::read_to_string(format!("/sys/class/thermal/thermal_zone{i}/temp")).ok()
+        })
+        .filter_map(|s| s.trim().parse::<i64>().ok())
+        .max()
+        .map(|t| format!("{:.0} C", if t > 1000 { t as f64 / 1000.0 } else { t as f64 }))
+        .unwrap_or_else(|| "?".into());
+    format!("cpu {khz} kHz, {temp}")
+}
+
 fn wait_for_gpu() {
     let Some(ready) = std::env::var_os(GPU_READY_VAR).map(PathBuf::from) else {
         return;
@@ -211,6 +227,11 @@ pub fn run() {
     let mut stages = Stages::default();
     // frames since a game frame capture was asked for (Logs/capture-frame), or 0
     let mut capture_shown = 0u32;
+    // The Brick's adaptive CPU clocks, from LordNordyx's Slot-Brick (Logs/power.log; a card
+    // file DISABLE_POWER_SAVING leaves the kernel's governor alone).
+    let mut cpu = board
+        .is_trimui()
+        .then(|| slot::brick_power::CpuPower::open(&root));
     loop {
         pacer.wait();
         let began = Instant::now();
@@ -218,9 +239,15 @@ pub fn run() {
         frontend.advance(&mut input);
         frontend.set_ds_touch(input.touch());
         if frontend.restarting() {
+        if let Some(cpu) = cpu.as_mut() {
+            cpu.restore();
+        }
             frontend.restart();
         }
         if frontend.relaunching() {
+        if let Some(cpu) = cpu.as_mut() {
+            cpu.restore();
+        }
             frontend.relaunch();
             return;
         }
@@ -228,6 +255,9 @@ pub fn run() {
             frontend.repair();
         }
         if frontend.powering_off() {
+        if let Some(cpu) = cpu.as_mut() {
+            cpu.restore();
+        }
             frontend.poweroff();
             return;
         }
@@ -235,6 +265,9 @@ pub fn run() {
             eprintln!("slot: told to stop, saving first");
             frontend.stop();
             return;
+        }
+        if let Some(cpu) = cpu.as_mut() {
+            cpu.mode(frontend.power_mode(), frontend.audio_underruns());
         }
         let late = frontend.step_emulator(pacer.period(), STEP_TIMEOUT);
         let stepped = Instant::now();
@@ -274,6 +307,9 @@ pub fn run() {
         }
         let swap = Instant::now();
         let work = swap - began;
+        if let Some(cpu) = cpu.as_mut() {
+            cpu.sample(!late, work, pacer.period(), frontend.audio_underruns());
+        }
         if let Err(e) = surface.swap() {
             eprintln!("slot: {e}");
             frontend.stop();
@@ -305,10 +341,11 @@ pub fn run() {
             stages.add([stepped - began, rendered - stepped, swap - rendered, swap_took, bottom_took]);
             if frames == 600 {
                 eprintln!(
-                    "slot: pace: 600 frames, {missed} missed a latch, {early} drawn early, {stale} stale, work {:.1} ms, period {:.2} ms, {}",
+                    "slot: pace: 600 frames, {missed} missed a latch, {early} drawn early, {stale} stale, work {:.1} ms, period {:.2} ms, {}, {}",
                     pacer.work().as_secs_f64() * 1e3,
                     pacer.period().as_secs_f64() * 1e3,
-                    stages.report()
+                    stages.report(),
+                    cpu_now()
                 );
                 (frames, missed, early, stale) = (0, 0, 0, 0);
                 stages = Stages::default();

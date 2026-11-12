@@ -2,8 +2,8 @@ Slot OS: what else is on this card, where it comes from, and under what licence
 ==============================================================================
 
 Slot OS starts the TrimUI Brick from this card straight into slot. slot itself, and Slot
-OS's own scripts (init, mixer.sh, the image build, adapted from LordNordyx's Slot-Brick,
-github.com/LordNordyx/Slot-Brick), are GPL-3.0: see the LICENSE file of slot's source,
+OS's own scripts (init, mixer.sh, the image build) and slot's adaptive CPU clocks on the
+Brick, all adapted from LordNordyx's Slot-Brick (github.com/LordNordyx/Slot-Brick), are GPL-3.0: see the LICENSE file of slot's source,
 github.com/BrandonKowalski/slot. Everything else listed here is someone else's work,
 passed on unchanged.
 
