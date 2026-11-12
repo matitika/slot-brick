@@ -36,7 +36,7 @@ fn the_chosen_logo_is_installed_then_the_image_s_own_comes_back() {
     let root = card.path();
     let own = encode_v5(&solid(1024, 768, [1, 2, 3]));
     std::fs::write(root.join("bootlogo.bmp"), &own).unwrap();
-    // nothing chosen: nothing to do
+    // nothing chosen and no wordmark: nothing to do
     assert_eq!(refresh_slot_os(root).unwrap(), Outcome::Same);
     // a 24-bit logo from Boot Logo Studio, another size
     std::fs::create_dir_all(root.join("Config")).unwrap();
@@ -46,11 +46,31 @@ fn the_chosen_logo_is_installed_then_the_image_s_own_comes_back() {
     assert_eq!((shown.width, shown.height), BRICK_PANEL);
     assert_eq!(shown.rgb[384 * 1024 + 512], [200, 0, 0]);
     assert_eq!(refresh_slot_os(root).unwrap(), Outcome::Same, "already shown");
-    // Gamebit's Restore deletes the chosen logo: the image's own comes back
+    // with no wordmark on the card, Gamebit's Restore brings the image's own back
     std::fs::remove_file(root.join("Config/bootlogo.bmp")).unwrap();
     assert_eq!(refresh_slot_os(root).unwrap(), Outcome::Installed);
     assert_eq!(std::fs::read(root.join("bootlogo.bmp")).unwrap(), own);
     assert!(!root.join("bootlogo.slotos.bmp").exists());
+}
+
+#[test]
+fn with_none_chosen_upstream_s_wordmark_is_centred_as_on_the_anbernics() {
+    let card = tempfile::tempdir().unwrap();
+    let root = card.path();
+    let own = encode_v5(&solid(1024, 768, [1, 2, 3]));
+    std::fs::write(root.join("bootlogo.bmp"), &own).unwrap();
+    std::fs::create_dir_all(root.join("System")).unwrap();
+    let mut mark = solid(196, 75, [11, 14, 17]);
+    mark.rgb[37 * 196 + 98] = [255, 255, 255];
+    std::fs::write(root.join("System/bootlogo.bmp"), encode(&mark)).unwrap();
+    assert_eq!(refresh_slot_os(root).unwrap(), Outcome::Installed);
+    let shown = decode_any(&std::fs::read(root.join("bootlogo.bmp")).unwrap()).unwrap();
+    assert_eq!((shown.width, shown.height), BRICK_PANEL);
+    assert_eq!(shown.rgb[0], [11, 14, 17], "the wordmark's ground fills the screen");
+    // at its own size, centred: (1024-196)/2 + 98, (768-75)/2 + 37
+    assert_eq!(shown.rgb[(346 + 37) * 1024 + 414 + 98], [255, 255, 255]);
+    assert_eq!(std::fs::read(root.join("bootlogo.slotos.bmp")).unwrap(), own, "the image's own kept");
+    assert_eq!(refresh_slot_os(root).unwrap(), Outcome::Same);
 }
 
 #[test]

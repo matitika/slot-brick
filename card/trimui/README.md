@@ -51,8 +51,9 @@ once, about 300 MB, checked against `card/trimui/os/sources.txt`):
 The logo shown while the Brick starts is `bootlogo.bmp` at the card's root. To change it, put
 a 24- or 32-bit `.bmp` at `Config/bootlogo.bmp`, from Boot Logo Studio (any device size) or
 Gamebit's Boot Logo page: slot fits it to the Brick's 1024×768 screen and installs it, so it
-shows from the start after next. Delete it (Gamebit: Restore) to get the Slot OS logo back.
-On stock firmware the Brick keeps TrimUI's own logo.
+shows from the start after next. With none chosen, slot shows its own wordmark
+(`System/bootlogo.bmp`), as it does on the Anbernics; the Slot OS image's logo is kept as
+`bootlogo.slotos.bmp`. On stock firmware the Brick keeps TrimUI's own logo.
 
 ## When something goes wrong
 

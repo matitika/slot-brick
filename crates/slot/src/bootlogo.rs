@@ -377,21 +377,27 @@ pub fn encode_v5(img: &Bmp) -> Vec<u8> {
     out
 }
 
-/// The chosen logo (Config/bootlogo.bmp, from Boot Logo Studio or Gamebit) as the card's
-/// bootlogo.bmp; with none chosen, the image's own logo back. Shown from the next start.
+/// The card's bootlogo.bmp, as upstream picks it: the chosen logo (Config/bootlogo.bmp, from
+/// Boot Logo Studio or Gamebit) fitted to the panel, or else slot's wordmark
+/// (System/bootlogo.bmp) centred at its own size; with neither, the image's own logo back.
+/// Shown from the next start.
 pub fn refresh_slot_os(card: &Path) -> io::Result<Outcome> {
     let target = card.join(LOGO);
     let original = card.join(SLOT_OS_ORIGINAL);
-    let Ok(chosen) = fs::read(card.join(USER_LOGO)) else {
-        if original.is_file() {
-            let logo = fs::read(&original)?;
-            replace(card, LOGO, &logo)?;
-            fs::remove_file(&original)?;
-            return Ok(Outcome::Installed);
+    let img = match (fs::read(card.join(USER_LOGO)), fs::read(card.join(CARD_LOGO))) {
+        (Ok(chosen), _) => decode_any(&chosen).and_then(|b| fit_to(&b, BRICK_PANEL)),
+        (Err(_), Ok(mark)) => decode_any(&mark).and_then(|m| compose(&m, BRICK_PANEL)),
+        (Err(_), Err(_)) => {
+            if original.is_file() {
+                let logo = fs::read(&original)?;
+                replace(card, LOGO, &logo)?;
+                fs::remove_file(&original)?;
+                return Ok(Outcome::Installed);
+            }
+            return Ok(Outcome::Same);
         }
-        return Ok(Outcome::Same);
     };
-    let Some(img) = decode_any(&chosen).and_then(|b| fit_to(&b, BRICK_PANEL)) else {
+    let Some(img) = img else {
         return Ok(Outcome::Invalid);
     };
     let logo = encode_v5(&img);
