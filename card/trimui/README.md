@@ -85,6 +85,11 @@ frames missed the screen, and the CPU's clock and temperature. Each button press
 `pace:` lines also say how much sound was waiting, in slot's queue and in the audio device
 (average/most, in ms): about how far the sound trails the picture.
 
+On the Brick slot keeps less sound queued than elsewhere (4 frames in its own buffer and 20 ms
+in the audio device, against 8 frames and 40 ms), so sound trails the picture by about 55 ms
+instead of 110. If sound crackles, an empty file `Config/audio-large-buffer` on the card brings
+back the larger buffers.
+
 Set `SLOT_TRACE_INPUT=1` (stock: in `.tmp_update/updater`) to log every button event to
 `Logs/input-trace.log`.
 

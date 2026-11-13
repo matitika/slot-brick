@@ -17,7 +17,12 @@ const SND_PCM_FORMAT_S16_LE: c_int = 2;
 const SND_PCM_ACCESS_RW_INTERLEAVED: c_int = 3;
 const CHANNELS: c_uint = 2;
 
-const LATENCY_US: c_uint = 40_000;
+/// The buffering asked of the device, in microseconds (40 ms; 20 ms on the Brick).
+static LATENCY_US: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(40_000);
+
+pub fn set_device_latency_ms(ms: u32) {
+    LATENCY_US.store(ms.max(10) * 1000, Ordering::Relaxed);
+}
 
 const PERIOD_FRAMES: usize = 512;
 
@@ -111,7 +116,7 @@ impl Alsa {
                     CHANNELS,
                     rate,
                     1,
-                    LATENCY_US,
+                    LATENCY_US.load(Ordering::Relaxed),
                 )
             };
             if err < 0 {

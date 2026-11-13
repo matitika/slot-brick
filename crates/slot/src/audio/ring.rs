@@ -4,8 +4,17 @@ use std::time::{Duration, Instant};
 
 use crate::drc::drc_target;
 
+/// How many 60 Hz frames of sound the ring holds; dynamic rate control keeps it half full, so
+/// sound trails the picture by about half this (plus the device's own buffer).
+static RING_FRAMES: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(8);
+
+/// A smaller ring, for a device fast enough to keep it fed (the TrimUI Brick: 4 frames).
+pub fn set_ring_frames(frames: usize) {
+    RING_FRAMES.store(frames.max(2), std::sync::atomic::Ordering::Relaxed);
+}
+
 pub fn ring_capacity(sample_rate: u32) -> usize {
-    sample_rate as usize * 8 / 60
+    sample_rate as usize * RING_FRAMES.load(std::sync::atomic::Ordering::Relaxed) / 60
 }
 
 const MAX_WAIT: Duration = Duration::from_millis(50);

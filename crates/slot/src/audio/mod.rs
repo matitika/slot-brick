@@ -10,12 +10,12 @@ mod sink;
 mod stub;
 pub mod volume;
 
-pub use alsa::{device_delay_ms, AlsaSink};
+pub use alsa::{device_delay_ms, set_device_latency_ms, AlsaSink};
 #[cfg(feature = "host")]
 pub use host::HostAudio;
 pub use jack::{follows_jack, Jack, RouteWatch};
 pub use pacer::Pacer;
-pub use ring::{ring_capacity, Ring};
+pub use ring::{ring_capacity, set_ring_frames, Ring};
 pub use sfx::Sfx;
 pub use silence::Silence;
 pub use sink::{AudioError, AudioSink};

@@ -88,6 +88,14 @@ pub fn run() {
     let root = std::env::var_os("SLOT_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(if board.is_trimui() { TRIMUI_CARD } else { CARD }));
+    // Less sound queued on the Brick: measured, the default trailed the picture by about 110 ms
+    // (75 in slot's ring, 36 in the device), which a rhythm game feels. Its frames now keep up, so
+    // 4 frames of ring and 20 ms of device buffer; Config/audio-large-buffer keeps the defaults.
+    if board.is_trimui() && !root.join(AUDIO_LARGE_BUFFER).is_file() {
+        slot::audio::set_ring_frames(4);
+        slot::audio::set_device_latency_ms(20);
+        eprintln!("slot: audio: 4-frame ring, 20 ms device buffer");
+    }
     if board.is_trimui() {
         log_cpu();
     }
@@ -394,6 +402,9 @@ pub fn run() {
         }
     }
 }
+
+/// A card file that keeps slot's default (larger) sound buffers on the Brick.
+const AUDIO_LARGE_BUFFER: &str = "Config/audio-large-buffer";
 
 const SHOW_FPS: &str = "System/show-fps.on";
 const FPS_EVERY: Duration = Duration::from_millis(500);
