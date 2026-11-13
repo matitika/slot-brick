@@ -78,9 +78,6 @@ pub fn run() {
     let _ = std::thread::Builder::new()
         .name("slot-fonts".into())
         .spawn(slot_ui::warm_fonts);
-    let audio = std::thread::Builder::new()
-        .name("slot-audio-open".into())
-        .spawn(slot::audio::opened_sink);
     let build = slot::build_info::Build::current();
     eprintln!("slot: build {} {} ({})", build.version, build.hash, build.date);
     let board = Board::detect();
@@ -96,6 +93,10 @@ pub fn run() {
         slot::audio::set_device_latency_ms(20);
         eprintln!("slot: audio: 4-frame ring, 20 ms device buffer");
     }
+    // opened only now: the ring is sized as it opens, so after the Brick's buffer sizes are set
+    let audio = std::thread::Builder::new()
+        .name("slot-audio-open".into())
+        .spawn(slot::audio::opened_sink);
     if board.is_trimui() {
         log_cpu();
     }

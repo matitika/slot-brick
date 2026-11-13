@@ -124,7 +124,11 @@ impl Alsa {
                 last = AudioError::Config(format!("{name}: {}", self.message(err)));
                 continue;
             }
-            eprintln!("slot: audio {name} at {rate} Hz");
+            eprintln!(
+                "slot: audio {name} at {rate} Hz, {} ms device buffer, {} ms ring",
+                LATENCY_US.load(Ordering::Relaxed) / 1000,
+                super::ring_capacity(rate) * 1000 / rate.max(1) as usize
+            );
             return Ok(pcm);
         }
         Err(last)
