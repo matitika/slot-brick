@@ -237,6 +237,8 @@ pub fn run() {
     let mut stages = Stages::default();
     // frames since a game frame capture was asked for (Logs/capture-frame), or 0
     let mut capture_shown = 0u32;
+    // the screen trace: frames drawn and idle turns (25 ms each) since screen_since
+    let (mut screen_counts, mut screen_since) = ((0u32, 0u32), Instant::now());
     // The Brick's adaptive CPU clocks, from LordNordyx's Slot-Brick (Logs/power.log; a card
     // file DISABLE_POWER_SAVING leaves the kernel's governor alone).
     let mut cpu = board
@@ -285,11 +287,24 @@ pub fn run() {
             cpu.mode(frontend.power_mode(), frontend.audio_underruns());
         }
         // An idle shelf on the Brick: nothing to redraw, so don't (input is still read every 25 ms)
+        if slot::latency::tracing() && screen_since.elapsed() >= SCREEN_EVERY {
+            eprintln!(
+                "slot: screen: {} drawn, {} idle in {} s ({}), {}",
+                screen_counts.0,
+                screen_counts.1,
+                SCREEN_EVERY.as_secs(),
+                frontend.screen_state(),
+                cpu_now()
+            );
+            (screen_counts, screen_since) = ((0, 0), Instant::now());
+        }
         if cpu.is_some() && !frontend.needs_render() {
+            screen_counts.1 += 1;
             pacer = Pacer::new();
             std::thread::sleep(Duration::from_millis(25));
             continue;
         }
+        screen_counts.0 += 1;
         let late = frontend.step_emulator(pacer.period(), STEP_TIMEOUT);
         let stepped = Instant::now();
         frontend.render(&mut compositor, window);
@@ -405,6 +420,9 @@ pub fn run() {
 
 /// A card file that keeps slot's default (larger) sound buffers on the Brick.
 const AUDIO_LARGE_BUFFER: &str = "Config/audio-large-buffer";
+
+/// How often the latency trace reports what the screen has been doing.
+const SCREEN_EVERY: Duration = Duration::from_secs(30);
 
 const SHOW_FPS: &str = "System/show-fps.on";
 const FPS_EVERY: Duration = Duration::from_millis(500);

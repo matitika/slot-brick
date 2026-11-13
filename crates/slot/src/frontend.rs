@@ -1330,6 +1330,20 @@ impl Frontend {
         (self.app().screen_power(), self.app().screen_shake())
     }
 
+    /// The current screen's name and whether Gamebit is open, for the screen trace.
+    pub fn screen_state(&self) -> String {
+        let phase = format!("{:?}", self.app().phase());
+        let name = phase
+            .split([' ', '{', '('])
+            .next()
+            .unwrap_or("?")
+            .to_string();
+        match self.app().server_open() {
+            true => format!("{name}, Gamebit open"),
+            false => name,
+        }
+    }
+
     /// A game's core is open or opening (the in-game menu included).
     pub fn has_game_core(&self) -> bool {
         self.session.has_core()
