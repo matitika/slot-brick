@@ -44,6 +44,10 @@ pub struct Frontend {
     last: Instant,
     /// When a button was last pressed: the Brick's CPU stays up while the shelf is in use.
     last_input: Instant,
+    /// When the screen was last drawn, and the screen effects it was drawn with: an idle shelf
+    /// on the Brick is only redrawn when something on it changes (see needs_render).
+    last_render: Instant,
+    rendered_effects: (f32, f32),
     draws: Vec<Draw>,
     ds: crate::ds_view::DsView,
     polaroid_texes: Vec<TexId>,
@@ -565,6 +569,8 @@ impl Frontend {
             start: now,
             last: now,
             last_input: now,
+            last_render: now,
+            rendered_effects: (0.0, 0.0),
             draws: Vec::new(),
             ds: Default::default(),
             polaroid_texes: Vec::new(),
@@ -1041,6 +1047,8 @@ impl Frontend {
     }
 
     pub fn render(&mut self, compositor: &mut Compositor, window: (u32, u32)) {
+        self.last_render = Instant::now();
+        self.rendered_effects = self.render_effects();
         self.session.app_mut().set_panel(window);
         compositor.fit(window);
         self.compose(compositor);
@@ -1296,6 +1304,30 @@ impl Frontend {
         self.app()
             .seated_cart()
             .map(|c| format!("{}/{}", c.platform.dir_name(), c.stem))
+    }
+
+    /// Whether the screen needs drawing this frame. In games and menus, while buttons are being
+    /// pressed, during transitions and at least once a second (the clock, artwork arriving),
+    /// always; on an idle shelf only when what it would draw has changed. After LordNordyx's
+    /// Slot-Brick: redrawing an unchanging shelf 60 times a second kept the Brick's CPU and GPU
+    /// fully busy, and the shelf was hotter than games.
+    pub fn needs_render(&self) -> bool {
+        let app = self.app();
+        if self.rebuild.is_some()
+            || !matches!(app.phase(), Phase::Shelf | Phase::QuickMenu { .. })
+            || self.last_input.elapsed() < Duration::from_secs(2)
+            || self.last_render.elapsed() >= Duration::from_secs(1)
+            || self.render_effects() != self.rendered_effects
+        {
+            return true;
+        }
+        let mut probe = Vec::new();
+        app.draw_screen(Screen::Top, &mut probe);
+        probe != self.draws
+    }
+
+    fn render_effects(&self) -> (f32, f32) {
+        (self.app().screen_power(), self.app().screen_shake())
     }
 
     /// A game's core is open or opening (the in-game menu included).
@@ -2782,5 +2814,41 @@ mod tests {
             ),
             Some(BezelArt::Fit3x2)
         );
+    }
+
+    // After LordNordyx's Slot-Brick test of the same gate.
+    #[test]
+    fn idle_shelf_redraws_only_on_change_input_effects_or_once_a_second() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::root::ensure(dir.path());
+        let mut state = slot_store::SlotState::default();
+        state.clock_set = true;
+        slot_store::write_slot_state(dir.path(), &state).unwrap();
+        let mut f = Frontend::boot(Box::new(slot_power::SimPlatform::at(dir.path().into())));
+        assert!(matches!(f.app().phase(), Phase::Shelf));
+        let idle = |f: &mut Frontend| {
+            f.last_input = Instant::now() - Duration::from_secs(3);
+            f.last_render = Instant::now();
+            f.rendered_effects = f.render_effects();
+            let mut scene = Vec::new();
+            f.app().draw_screen(Screen::Top, &mut scene);
+            f.draws = scene;
+        };
+        idle(&mut f);
+        assert!(!f.needs_render(), "an unchanged shelf is not redrawn");
+        f.last_input = Instant::now();
+        assert!(f.needs_render(), "a button press redraws at once");
+        idle(&mut f);
+        f.rendered_effects.0 = -1.0;
+        assert!(f.needs_render(), "screen transitions animate");
+        idle(&mut f);
+        f.last_render = Instant::now() - Duration::from_secs(2);
+        assert!(
+            f.needs_render(),
+            "the clock and arriving artwork refresh once a second"
+        );
+        idle(&mut f);
+        f.draws.clear();
+        assert!(f.needs_render(), "a changed scene redraws");
     }
 }

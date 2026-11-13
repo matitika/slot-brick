@@ -55,6 +55,12 @@ shows from the start after next. With none chosen, slot shows its own wordmark
 (`System/bootlogo.bmp`), as it does on the Anbernics; the Slot OS image's logo is kept as
 `bootlogo.slotos.bmp`. On stock firmware the Brick keeps TrimUI's own logo.
 
+## Clock
+
+With Settings' network time on, slot sets the clock from an internet time server (pool.ntp.org)
+once Wi-Fi is up, then every six hours: neither Slot OS nor TrimUI's system has a time service
+of its own.
+
 ## When something goes wrong
 
 Logs are on the card in `Logs/`:
@@ -74,7 +80,8 @@ Logs are on the card in `Logs/`:
 
 To see what slows a game down, put an empty file `System/trace-latency.on` on the card: every
 600 frames `slot.log` then gets a `pace:` line with how long each step of a frame took, how many
-frames missed the screen, and the CPU's clock and temperature.
+frames missed the screen, and the CPU's clock and temperature. Each button press also gets a
+`latency:` line: how long it took from the press to the screen.
 
 Set `SLOT_TRACE_INPUT=1` (stock: in `.tmp_update/updater`) to log every button event to
 `Logs/input-trace.log`.

@@ -274,6 +274,12 @@ pub fn run() {
             }
             cpu.mode(frontend.power_mode(), frontend.audio_underruns());
         }
+        // An idle shelf on the Brick: nothing to redraw, so don't (input is still read every 25 ms)
+        if cpu.is_some() && !frontend.needs_render() {
+            pacer = Pacer::new();
+            std::thread::sleep(Duration::from_millis(25));
+            continue;
+        }
         let late = frontend.step_emulator(pacer.period(), STEP_TIMEOUT);
         let stepped = Instant::now();
         frontend.render(&mut compositor, window);

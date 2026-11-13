@@ -289,7 +289,12 @@ impl InputSource for DeviceInput {
     fn poll(&mut self, now: Millis) -> Vec<RawEvent> {
         let mut out = std::mem::take(&mut *self.pending.lock().unwrap_or_else(|e| e.into_inner()));
         if let Some(pins) = &mut self.pins {
-            out.extend(pins.poll());
+            let pressed = pins.poll();
+            // the latency trace starts at a press, as it does for evdev's key-down events
+            if pressed.iter().any(|e| matches!(e, RawEvent::Down(_))) {
+                crate::latency::read();
+            }
+            out.extend(pressed);
         }
         if self.hall.is_some() && now >= self.next_lid_poll {
             self.next_lid_poll = now + LID_POLL_MS;

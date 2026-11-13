@@ -1068,6 +1068,10 @@ pub fn take_repair_result(file: &Path) -> Option<RepairResult> {
 }
 
 fn set_ntp(on: bool) {
+    if !Path::new(TIMEDATECTL).exists() {
+        sntp::set(on);
+        return;
+    }
     let want = if on { "yes" } else { "no" };
     let now = Command::new(TIMEDATECTL)
         .args(["show", "-p", "NTP", "--value"])
@@ -1092,4 +1096,109 @@ fn write_clock(secs: i64) {
         "hwclock",
         Command::new("hwclock").args(["-w", "-u"]).status(),
     );
+}
+
+/// Network time where there's no timedatectl (the TrimUI Brick, stock firmware and Slot OS):
+/// slot asks a time server itself (SNTP) while the setting is on, every few hours once it has
+/// an answer and every minute until it does (Wi-Fi may not be up yet), and sets the clock and
+/// the RTC when it's off by more than a couple of seconds.
+mod sntp {
+    use std::net::UdpSocket;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    const SERVER: (&str, u16) = ("pool.ntp.org", 123);
+    const EVERY: Duration = Duration::from_secs(6 * 3600);
+    const RETRY: Duration = Duration::from_secs(60);
+    /// Seconds from 1900 (NTP's epoch) to 1970.
+    const NTP_TO_UNIX: i64 = 2_208_988_800;
+
+    static ON: AtomicBool = AtomicBool::new(false);
+    static RUNNING: AtomicBool = AtomicBool::new(false);
+
+    pub fn set(on: bool) {
+        ON.store(on, Ordering::Release);
+        if on && !RUNNING.swap(true, Ordering::AcqRel) {
+            std::thread::spawn(|| {
+                while ON.load(Ordering::Acquire) {
+                    let wait = match query() {
+                        Ok(secs) => {
+                            let now = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .map_or(0, |d| d.as_secs() as i64);
+                            if (secs - now).abs() > 2 {
+                                eprintln!(
+                                    "slot: network time: clock was off by {} s, set",
+                                    secs - now
+                                );
+                                super::write_clock(secs);
+                            }
+                            EVERY
+                        }
+                        Err(_) => RETRY,
+                    };
+                    std::thread::sleep(wait);
+                }
+                RUNNING.store(false, Ordering::Release);
+            });
+        }
+    }
+
+    fn query() -> std::io::Result<i64> {
+        let socket = UdpSocket::bind("0.0.0.0:0")?;
+        socket.set_read_timeout(Some(Duration::from_secs(3)))?;
+        socket.connect(SERVER)?;
+        let mut packet = [0u8; 48];
+        packet[0] = 0x1b; // no leap warning, version 3, client
+        socket.send(&packet)?;
+        let n = socket.recv(&mut packet)?;
+        parse(&packet[..n]).ok_or_else(|| std::io::Error::other("bad time server reply"))
+    }
+
+    /// Unix seconds (rounded) from a server reply, or None for one not to trust.
+    pub fn parse(reply: &[u8]) -> Option<i64> {
+        if reply.len() < 48 || reply[0] >> 6 == 3 || reply[0] & 7 != 4 || reply[1] == 0 {
+            return None; // unsynchronised, not a server reply, or a kiss-o'-death
+        }
+        let secs = u32::from_be_bytes(reply[40..44].try_into().ok()?) as i64;
+        let frac = u32::from_be_bytes(reply[44..48].try_into().ok()?);
+        let unix = secs - NTP_TO_UNIX + i64::from(frac >= 1 << 31);
+        (unix > 1_700_000_000).then_some(unix)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        fn reply(mode_byte: u8, stratum: u8, ntp_secs: u32, frac: u32) -> [u8; 48] {
+            let mut r = [0u8; 48];
+            r[0] = mode_byte;
+            r[1] = stratum;
+            r[40..44].copy_from_slice(&ntp_secs.to_be_bytes());
+            r[44..48].copy_from_slice(&frac.to_be_bytes());
+            r
+        }
+
+        #[test]
+        fn reads_a_server_reply() {
+            let unix = 1_794_528_518i64;
+            let ntp = (unix + NTP_TO_UNIX) as u32;
+            assert_eq!(parse(&reply(0x1c, 2, ntp, 0)), Some(unix));
+            assert_eq!(parse(&reply(0x1c, 2, ntp, 0x8000_0000)), Some(unix + 1));
+        }
+
+        #[test]
+        fn refuses_untrustworthy_replies() {
+            let ntp = (1_794_528_518i64 + NTP_TO_UNIX) as u32;
+            assert_eq!(
+                parse(&reply(0xdc, 2, ntp, 0)),
+                None,
+                "unsynchronised server"
+            );
+            assert_eq!(parse(&reply(0x1c, 0, ntp, 0)), None, "kiss-o'-death");
+            assert_eq!(parse(&reply(0x1b, 2, ntp, 0)), None, "not a server reply");
+            assert_eq!(parse(&reply(0x1c, 2, 0, 0)), None, "nonsense time");
+            assert_eq!(parse(&[0u8; 20]), None, "short");
+        }
+    }
 }
