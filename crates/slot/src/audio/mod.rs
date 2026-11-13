@@ -10,7 +10,7 @@ mod sink;
 mod stub;
 pub mod volume;
 
-pub use alsa::AlsaSink;
+pub use alsa::{device_delay_ms, AlsaSink};
 #[cfg(feature = "host")]
 pub use host::HostAudio;
 pub use jack::{follows_jack, Jack, RouteWatch};

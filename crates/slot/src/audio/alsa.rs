@@ -33,6 +33,15 @@ type PcmRecover = unsafe extern "C" fn(*mut c_void, c_int, c_int) -> c_int;
 type PcmDrop = unsafe extern "C" fn(*mut c_void) -> c_int;
 type PcmClose = unsafe extern "C" fn(*mut c_void) -> c_int;
 type StrError = unsafe extern "C" fn(c_int) -> *const c_char;
+type PcmDelay = unsafe extern "C" fn(*mut c_void, *mut std::ffi::c_long) -> c_int;
+
+/// Microseconds of sound written to the device and not yet played, as of the last write (for
+/// the pace trace): snd_pcm_delay, when the library has it.
+static DEVICE_DELAY_US: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub fn device_delay_ms() -> f64 {
+    DEVICE_DELAY_US.load(Ordering::Relaxed) as f64 / 1000.0
+}
 
 struct Alsa {
     open: PcmOpen,
@@ -42,6 +51,7 @@ struct Alsa {
     drop: PcmDrop,
     close: PcmClose,
     strerror: StrError,
+    delay: Option<PcmDelay>,
     _lib: Library,
 }
 
@@ -65,6 +75,7 @@ impl Alsa {
                 drop: get!("snd_pcm_drop"),
                 close: get!("snd_pcm_close"),
                 strerror: get!("snd_strerror"),
+                delay: lib.get::<PcmDelay>(b"snd_pcm_delay\0").ok().map(|s| *s),
                 _lib: lib,
             })
         }
@@ -296,6 +307,13 @@ impl Playback {
                 continue;
             }
             written += frames as usize;
+        }
+        if let Some(delay) = self.alsa.delay {
+            let mut frames: std::ffi::c_long = 0;
+            if unsafe { delay(pcm, &mut frames) } == 0 && frames >= 0 && self.rate > 0 {
+                let us = frames as u64 * 1_000_000 / self.rate as u64;
+                DEVICE_DELAY_US.store(us, Ordering::Relaxed);
+            }
         }
         true
     }

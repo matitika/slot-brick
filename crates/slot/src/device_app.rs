@@ -224,6 +224,8 @@ pub fn run() {
         None => Pacer::new(),
     };
     let (mut frames, mut missed, mut early, mut stale) = (0u32, 0u32, 0u32, 0u32);
+    // sound waiting in slot's queue and in the device, while a game plays: (sum, max, count)
+    let (mut queued, mut device) = ((0.0f64, 0.0f64, 0u32), (0.0f64, 0.0f64, 0u32));
     let mut stages = Stages::default();
     // frames since a game frame capture was asked for (Logs/capture-frame), or 0
     let mut capture_shown = 0u32;
@@ -350,15 +352,35 @@ pub fn run() {
             early += u32::from(swap_took > pacer.period() / 2);
             stale += u32::from(late);
             stages.add([stepped - began, rendered - stepped, swap - rendered, swap_took, bottom_took]);
+            if frontend.has_game_core() {
+                for (acc, ms) in [
+                    (&mut queued, frontend.audio_queued_ms()),
+                    (&mut device, slot::audio::device_delay_ms()),
+                ] {
+                    *acc = (acc.0 + ms, acc.1.max(ms), acc.2 + 1);
+                }
+            }
             if frames == 600 {
+                let avg = |a: (f64, f64, u32)| a.0 / f64::from(a.2.max(1));
+                let sound = match queued.2 {
+                    0 => String::new(),
+                    _ => format!(
+                        ", sound queued {:.0}/{:.0} ms, in device {:.0}/{:.0} ms",
+                        avg(queued),
+                        queued.1,
+                        avg(device),
+                        device.1
+                    ),
+                };
                 eprintln!(
-                    "slot: pace: 600 frames, {missed} missed a latch, {early} drawn early, {stale} stale, work {:.1} ms, period {:.2} ms, {}, {}",
+                    "slot: pace: 600 frames, {missed} missed a latch, {early} drawn early, {stale} stale, work {:.1} ms, period {:.2} ms, {}, {}{sound}",
                     pacer.work().as_secs_f64() * 1e3,
                     pacer.period().as_secs_f64() * 1e3,
                     stages.report(),
                     cpu_now()
                 );
                 (frames, missed, early, stale) = (0, 0, 0, 0);
+                (queued, device) = ((0.0, 0.0, 0), (0.0, 0.0, 0));
                 stages = Stages::default();
             }
         }

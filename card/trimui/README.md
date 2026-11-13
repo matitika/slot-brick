@@ -81,7 +81,9 @@ Logs are on the card in `Logs/`:
 To see what slows a game down, put an empty file `System/trace-latency.on` on the card: every
 600 frames `slot.log` then gets a `pace:` line with how long each step of a frame took, how many
 frames missed the screen, and the CPU's clock and temperature. Each button press also gets a
-`latency:` line: how long it took from the press to the screen.
+`latency:` line: how long it took from the press to the screen. While a game plays, the
+`pace:` lines also say how much sound was waiting, in slot's queue and in the audio device
+(average/most, in ms): about how far the sound trails the picture.
 
 Set `SLOT_TRACE_INPUT=1` (stock: in `.tmp_update/updater`) to log every button event to
 `Logs/input-trace.log`.

@@ -1335,6 +1335,12 @@ impl Frontend {
         self.session.has_core()
     }
 
+    /// Milliseconds of game sound waiting in slot's queue, not yet handed to the device.
+    pub fn audio_queued_ms(&self) -> f64 {
+        let ring = self.session.audio_ring();
+        ring.queued_frames() as f64 * 1000.0 / f64::from(ring.sample_rate().max(1))
+    }
+
     /// Audio the core couldn't supply in time, so far: the Brick's CPU rises when it grows.
     pub fn audio_underruns(&self) -> u64 {
         self.session.audio_ring().underruns()
