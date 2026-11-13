@@ -65,8 +65,11 @@ Logs are on the card in `Logs/`:
 - `sleep.log`: each suspend and resume.
 - `power.log`: the CPU clocks slot picks (adapted from LordNordyx's Slot-Brick): in games it
   raises them as soon as frames run late or the sound runs dry, and lowers them when there's
-  room to spare; on the shelf and asleep it keeps them low. An empty file `DISABLE_POWER_SAVING`
-  at the card's root leaves the CPU to the system instead.
+  room to spare; on the shelf and asleep it keeps them low. Games get at least 1.2 GHz, and
+  each game's needs are remembered in `Config/cpu-levels.txt`, so the next session starts
+  there; after five trouble-free minutes a game tries one step lower next time. Delete the
+  file to start over. An empty file `DISABLE_POWER_SAVING` at the card's root leaves the CPU
+  to the system instead.
 - `slot-session.log`: stock firmware only: each start of slot.
 
 To see what slows a game down, put an empty file `System/trace-latency.on` on the card: every

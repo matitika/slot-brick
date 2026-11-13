@@ -1291,6 +1291,18 @@ impl Frontend {
         }
     }
 
+    /// The game in the slot, as the key the Brick's CPU remembers it by (its folder and name).
+    pub fn power_game(&self) -> Option<String> {
+        self.app()
+            .seated_cart()
+            .map(|c| format!("{}/{}", c.platform.dir_name(), c.stem))
+    }
+
+    /// A game's core is open or opening (the in-game menu included).
+    pub fn has_game_core(&self) -> bool {
+        self.session.has_core()
+    }
+
     /// Audio the core couldn't supply in time, so far: the Brick's CPU rises when it grows.
     pub fn audio_underruns(&self) -> u64 {
         self.session.audio_ring().underruns()

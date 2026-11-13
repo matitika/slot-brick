@@ -267,6 +267,11 @@ pub fn run() {
             return;
         }
         if let Some(cpu) = cpu.as_mut() {
+            // The in-game menu doesn't name the cart: keep the game until its core closes.
+            let game = frontend.power_game();
+            if game.is_some() || !frontend.has_game_core() {
+                cpu.game(game.as_deref());
+            }
             cpu.mode(frontend.power_mode(), frontend.audio_underruns());
         }
         let late = frontend.step_emulator(pacer.period(), STEP_TIMEOUT);

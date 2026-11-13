@@ -14,9 +14,16 @@ pub enum Mode {
     Standby,
     Boost,
 }
-// `at` is the ceiling (scaling_max_freq). In games `low` is also held as
-// scaling_min_freq: schedutil reads the frame-paced emulator as idle and parks
-// at 816 MHz, so a ceiling alone cannot stop audio underruns.
+// The least a game is given on the Brick: traces of Kirby show mGBA falling behind at 1.0 GHz
+// and keeping up from 1.2 GHz.
+const GAME_MIN_KHZ: u32 = 1_200_000;
+// A game played this long without trouble is tried one step lower next time.
+const PROBE_DOWN_AFTER: u32 = 600; // half-second windows: 5 minutes
+                                   // `at` is the ceiling (scaling_max_freq). In games `low` is also held as
+                                   // scaling_min_freq: schedutil reads the frame-paced emulator as idle and parks
+                                   // at 816 MHz, so a ceiling alone cannot stop audio underruns.
+                                   // `learned` and `floor` are what this game needed last time (Config/cpu-levels.txt): the held
+                                   // minimum never steps below `learned`, the ceiling never below `floor`.
 struct Policy {
     levels: Vec<u32>,
     at: usize,
@@ -26,11 +33,15 @@ struct Policy {
     base: usize,
     low: usize,
     steady: u32,
+    learned: usize,
+    trouble: bool,
+    windows: u32,
+    last_bad: bool,
 }
 impl Policy {
     fn new(levels: Vec<u32>) -> Self {
         let at = levels.len() - 1;
-        let floor = levels.iter().position(|&v| v >= 1_008_000).unwrap_or(at);
+        let floor = levels.iter().position(|&v| v >= GAME_MIN_KHZ).unwrap_or(at);
         Self {
             levels,
             at,
@@ -40,7 +51,39 @@ impl Policy {
             base: floor,
             low: 0,
             steady: 0,
+            learned: floor,
+            trouble: false,
+            windows: 0,
+            last_bad: false,
         }
+    }
+    fn index_of(&self, khz: u32) -> usize {
+        self.levels
+            .iter()
+            .position(|&v| v >= khz)
+            .unwrap_or(self.levels.len() - 1)
+            .max(self.base)
+    }
+    /// Start a game from what it needed last time, or from the defaults.
+    fn load(&mut self, remembered: Option<(u32, u32)>) {
+        let (min, ceiling) = remembered.map_or((self.base, self.base), |(m, c)| {
+            (self.index_of(m), self.index_of(c))
+        });
+        self.learned = min;
+        self.floor = ceiling.max(min);
+        self.trouble = false;
+        self.windows = 0;
+        if self.mode == Mode::Game {
+            self.low = self.learned.min(self.at);
+        }
+    }
+    /// What to remember for the game: its held minimum and ceiling floor, in kHz. A long
+    /// session without trouble lets both try one step lower next time.
+    fn remember(&self) -> (u32, u32) {
+        let down = usize::from(!self.trouble && self.windows >= PROBE_DOWN_AFTER);
+        let min = self.learned.saturating_sub(down).max(self.base);
+        let ceiling = self.floor.saturating_sub(down).max(min);
+        (self.levels[min], self.levels[ceiling])
     }
     fn change_mode(&mut self, mode: Mode) -> u32 {
         if self.mode != mode {
@@ -55,7 +98,7 @@ impl Policy {
                 _ => self.levels.len() - 1,
             };
             self.low = if mode == Mode::Game {
-                self.base.min(self.at)
+                self.learned.min(self.at)
             } else {
                 0
             };
@@ -69,7 +112,14 @@ impl Policy {
         if self.mode != Mode::Game {
             return self.levels[self.at];
         }
+        self.windows = self.windows.saturating_add(1);
         if bad {
+            self.trouble = true;
+            // Late even at what it needed before: it needs more, this time and next. Once per
+            // spell of trouble, so one long hiccup doesn't raise it twice.
+            if self.low == self.learned && !self.last_bad {
+                self.learned = (self.learned + 1).min(self.levels.len() - 1);
+            }
             if self.at + 1 < self.levels.len() {
                 self.floor = self.floor.max(self.at + 1);
             }
@@ -80,7 +130,7 @@ impl Policy {
         } else if spare {
             self.clean += 1;
             if self.clean >= 20 {
-                self.at = self.at.saturating_sub(1).max(self.floor);
+                self.at = self.at.saturating_sub(1).max(self.floor).max(self.learned);
                 self.clean = 0;
             }
         } else {
@@ -90,10 +140,11 @@ impl Policy {
             // A minute without trouble lets the held minimum step back down.
             self.steady += 1;
             if self.steady >= 120 {
-                self.low = self.low.saturating_sub(1).max(self.base);
+                self.low = self.low.saturating_sub(1).max(self.learned);
                 self.steady = 0;
             }
         }
+        self.last_bad = bad;
         self.low = self.low.min(self.at);
         self.levels[self.at]
     }
@@ -116,6 +167,24 @@ pub struct CpuPower {
     underruns: u64,
     grace: Instant,
     telemetry_at: Instant,
+    /// Config/cpu-levels.txt: what each game needed, so the next session starts there.
+    levels_file: PathBuf,
+    game: Option<String>,
+}
+const LEVELS_FILE: &str = "Config/cpu-levels.txt";
+/// Config/cpu-levels.txt: one game a line, `key<TAB>floor kHz<TAB>ceiling floor kHz`.
+fn remembered(file: &Path) -> std::collections::BTreeMap<String, (u32, u32)> {
+    fs::read_to_string(file)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| {
+            let mut f = line.split('\t');
+            let key = f.next()?.to_string();
+            let min = f.next()?.trim().parse().ok()?;
+            let ceiling = f.next()?.trim().parse().ok()?;
+            Some((key, (min, ceiling)))
+        })
+        .collect()
 }
 fn read(sys: &Path, name: &str) -> io::Result<String> {
     Ok(fs::read_to_string(sys.join(name))?.trim().into())
@@ -143,6 +212,8 @@ impl CpuPower {
         let mut s = Self {
             sys: sys.into(),
             log: root.join("Logs/power.log"),
+            levels_file: root.join(LEVELS_FILE),
+            game: None,
             original: vec![],
             policy: None,
             userspace: false,
@@ -314,7 +385,57 @@ impl CpuPower {
         self.underruns = underruns;
         self.window = Instant::now();
     }
+    /// The game now in the slot (a key that names it), or None on the shelf. A change saves what
+    /// the last game needed and starts this one from what it needed before.
+    pub fn game(&mut self, key: Option<&str>) {
+        if self.game.as_deref() == key {
+            return;
+        }
+        self.save_game();
+        self.game = key.map(str::to_string);
+        let remembered = key.and_then(|k| remembered(&self.levels_file).remove(k));
+        if let Some(p) = &mut self.policy {
+            p.load(remembered);
+        }
+        if let (Some(k), Some((min, ceiling))) = (key, remembered) {
+            self.log(&format!(
+                "{k}: remembered floor_khz={min} ceiling_floor_khz={ceiling}"
+            ));
+        }
+    }
+    fn save_game(&mut self) {
+        let (Some(game), Some(p)) = (self.game.take(), &self.policy) else {
+            return;
+        };
+        if p.windows == 0 {
+            return; // never played: nothing learned
+        }
+        let (min, ceiling) = p.remember();
+        let mut all = remembered(&self.levels_file);
+        if all.get(&game) == Some(&(min, ceiling)) {
+            return;
+        }
+        all.insert(game.clone(), (min, ceiling));
+        let text: String = all
+            .iter()
+            .map(|(k, (m, c))| format!("{k}\t{m}\t{c}\n"))
+            .collect();
+        let tmp = self.levels_file.with_extension("tmp");
+        let saved = self
+            .levels_file
+            .parent()
+            .map_or(Ok(()), fs::create_dir_all)
+            .and_then(|_| fs::write(&tmp, text))
+            .and_then(|_| fs::rename(&tmp, &self.levels_file));
+        match saved {
+            Ok(()) => self.log(&format!(
+                "{game}: saved floor_khz={min} ceiling_floor_khz={ceiling}"
+            )),
+            Err(e) => self.log(&format!("{game}: can't save levels: {e}")),
+        }
+    }
     pub fn restore(&mut self) {
+        self.save_game();
         self.policy = None;
         // Original max first: our min was only lowered; original min is then valid.
         for key in [
@@ -384,21 +505,22 @@ mod tests {
     fn games_hold_a_minimum_that_rises_on_trouble_and_decays() {
         let mut p = policy();
         p.change_mode(Mode::Game);
-        assert_eq!(p.min_khz(), 1008000);
-        p.sample(true, false);
         assert_eq!(p.min_khz(), 1200000);
         p.sample(true, false);
         assert_eq!(p.min_khz(), 1416000);
+        p.sample(true, false);
+        assert_eq!(p.min_khz(), 1608000);
         for _ in 0..119 {
             p.sample(false, false);
         }
-        assert_eq!(p.min_khz(), 1416000);
+        assert_eq!(p.min_khz(), 1608000);
         p.sample(false, false);
-        assert_eq!(p.min_khz(), 1200000);
+        assert_eq!(p.min_khz(), 1416000);
+        // It was late at 1.2 GHz, so it stays at what it needed instead of dipping back.
         for _ in 0..1000 {
             p.sample(false, true);
         }
-        assert_eq!(p.min_khz(), 1008000);
+        assert_eq!(p.min_khz(), 1416000);
         assert!(p.min_khz() <= p.levels[p.at]);
         assert_eq!(p.change_mode(Mode::Menu), 816000);
         assert_eq!(p.min_khz(), 408000);
@@ -409,7 +531,7 @@ mod tests {
         fs::write(sys.join("scaling_available_governors"), "schedutil").unwrap();
         let mut cpu2 = CpuPower::open_in(t.path(), &sys);
         cpu2.mode(Mode::Game, 0);
-        assert_eq!(read(&sys, "scaling_min_freq").unwrap(), "1008000");
+        assert_eq!(read(&sys, "scaling_min_freq").unwrap(), "1200000");
         assert_eq!(read(&sys, "scaling_max_freq").unwrap(), "1800000");
         cpu2.mode(Mode::Menu, 0);
         assert_eq!(read(&sys, "scaling_min_freq").unwrap(), "408000");
@@ -417,7 +539,7 @@ mod tests {
         cpu2.mode(Mode::Standby, 0);
         assert_eq!(read(&sys, "scaling_max_freq").unwrap(), "408000");
         cpu2.mode(Mode::Game, 0);
-        assert_eq!(read(&sys, "scaling_min_freq").unwrap(), "1008000");
+        assert_eq!(read(&sys, "scaling_min_freq").unwrap(), "1200000");
         drop(cpu2);
         assert_eq!(read(&sys, "scaling_min_freq").unwrap(), "1200000");
         assert_eq!(read(&sys, "scaling_max_freq").unwrap(), "2000000");
@@ -431,11 +553,57 @@ mod tests {
         for _ in 0..400 {
             p.sample(false, true);
         }
-        assert_eq!(p.levels[p.at], 1008000);
+        assert_eq!(p.levels[p.at], 1200000);
         assert_eq!(p.change_mode(Mode::Boost), 1800000);
         for _ in 0..100 {
             assert_eq!(p.sample(false, true), 1800000);
         }
+    }
+    #[test]
+    fn a_game_learns_up_at_once_and_down_after_a_clean_session() {
+        let mut p = policy();
+        p.load(None);
+        p.change_mode(Mode::Game);
+        p.sample(true, false); // late at 1.2 GHz
+        p.sample(true, false); // the same hiccup: no second step
+        for _ in 0..10 {
+            p.sample(false, false);
+        }
+        assert_eq!(p.remember().0, 1416000);
+        // Next time it starts there, and doesn't dip below it.
+        let saved = p.remember();
+        let mut p = policy();
+        p.load(Some(saved));
+        p.change_mode(Mode::Game);
+        assert_eq!(p.min_khz(), 1416000);
+        for _ in 0..PROBE_DOWN_AFTER {
+            assert!(p.min_khz() >= 1416000);
+            p.sample(false, true);
+        }
+        // Five clean minutes: try one step lower next time, never below the Brick's minimum.
+        assert_eq!(p.remember().0, 1200000);
+        let mut p = policy();
+        p.load(Some((408000, 408000)));
+        p.change_mode(Mode::Game);
+        assert_eq!(p.min_khz(), 1200000);
+    }
+    #[test]
+    fn levels_are_saved_per_game_on_the_card() {
+        let (t, sys) = fixture();
+        let mut cpu = CpuPower::open_in(t.path(), &sys);
+        cpu.game(Some("GBA/Kirby"));
+        cpu.mode(Mode::Game, 0);
+        let p = cpu.policy.as_mut().unwrap();
+        p.sample(true, false);
+        cpu.game(None);
+        let file = fs::read_to_string(t.path().join(LEVELS_FILE)).unwrap();
+        // the fixture has no 1.416 GHz step: one up from 1.2 is 1.608
+        assert_eq!(file, "GBA/Kirby\t1608000\t1608000\n");
+        cpu.game(Some("GB/Tetris")); // never played: nothing written
+        cpu.game(None);
+        cpu.game(Some("GBA/Kirby"));
+        cpu.mode(Mode::Game, 0);
+        assert_eq!(read(&sys, "scaling_min_freq").unwrap(), "1608000");
     }
     fn fixture() -> (tempfile::TempDir, PathBuf) {
         let t = tempfile::tempdir().unwrap();
