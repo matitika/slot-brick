@@ -12,6 +12,13 @@ LOG="$ROOT/Logs/sleep.log"
 if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 131072 ]; then mv -f "$LOG" "$LOG.1"; fi
 exec >> "$LOG" 2>&1
 printf '\nsleep: %s\n' "$(date)"
+BATTERY="$SYS/class/power_supply/axp2202-battery"
+battery() {
+    printf 'battery %s: %s%%' "$1" "$(cat "$BATTERY/capacity" 2>/dev/null || echo '?')"
+    [ -r "$BATTERY/voltage_now" ] && printf ', %s mV' "$(( $(cat "$BATTERY/voltage_now") / 1000 ))"
+    printf '\n'
+}
+battery before
 [ -w "$SYS/power/state" ] && grep -qw mem "$SYS/power/state" || { echo 'no mem suspend'; exit 1; }
 
 radios=''
@@ -26,6 +33,7 @@ restore() {
     [ "$owned_flag" = 0 ] || rm -f "$INPUT_FLAG"
     [ -z "$mem_sleep_was" ] || printf '%s\n' "$mem_sleep_was" > "$SYS/power/mem_sleep"
     for r in $radios; do printf '0\n' > "$r/soft" || echo "radio restore failed: $r"; done
+    battery after
     echo "done: $status"
     exit "$status"
 }
