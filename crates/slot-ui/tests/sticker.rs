@@ -217,3 +217,32 @@ fn the_sp_label_is_not_the_ds_label() {
         slot_ui::ds_sticker_face(&fields()).w
     );
 }
+
+#[test]
+fn the_brick_sticker_names_the_brick_its_os_and_its_credits() {
+    let f = StickerFields {
+        battery: Some(64),
+        serial: "AB12CD34E",
+        version: "1.16.0.27",
+        baseos: Some("brick 6f9ca33"),
+        model: slot_ui::brick_model_no(false),
+    };
+    let all = slot_ui::brick_sticker_lines(&f, false).join("\n");
+    for want in [
+        "MODEL NO. TG3040",
+        "TRIMUI BRICK",
+        "SLOT OS brick 6f9ca33",
+        "VERSION 1.16.0.27",
+        "LORDNORDYX",
+        "MGBA",
+    ] {
+        assert!(all.contains(want), "{want} missing from\n{all}");
+    }
+    assert!(!all.contains("ANBERNIC") && !all.contains("BASEOS"));
+    let stock = StickerFields { baseos: None, ..f };
+    assert!(slot_ui::brick_sticker_lines(&stock, true)
+        .join("\n")
+        .contains("TRIMUI BRICK PRO"));
+    let face = slot_ui::brick_sticker_face(&stock, true);
+    assert_eq!(face.rgba.len(), (face.w * face.h * 4) as usize);
+}

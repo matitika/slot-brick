@@ -2901,8 +2901,22 @@ fn sync_about(app: &mut App, compositor: &mut Compositor, state: &mut AboutFace)
     }
     state.battery = battery;
     let build = Build::current();
-    let baseos = crate::baseos::var("BASEOS_VERSION");
-    let model = crate::baseos::var("BASEOS_MODEL").unwrap_or_default();
+    // the Brick: its own sticker, with Slot OS's version where it runs on Slot OS
+    let brick = std::env::var("SLOT_DEVICE")
+        .ok()
+        .filter(|d| d.starts_with("brick"))
+        .map(|d| d == "brickpro");
+    let baseos = match brick {
+        Some(_) => std::env::var_os("SLOT_OS")
+            .and_then(|_| std::fs::read_to_string("/etc/slot-os-version").ok())
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty()),
+        None => crate::baseos::var("BASEOS_VERSION"),
+    };
+    let model = match brick {
+        Some(pro) => slot_ui::brick_model_no(pro).to_string(),
+        None => crate::baseos::var("BASEOS_MODEL").unwrap_or_default(),
+    };
     let fields = StickerFields {
         battery,
         serial: &build.serial(),
@@ -2910,9 +2924,10 @@ fn sync_about(app: &mut App, compositor: &mut Compositor, state: &mut AboutFace)
         baseos: baseos.as_deref(),
         model: &model,
     };
-    let face = match crate::baseos::var("BASEOS_TARGET").as_deref() {
-        Some("rgdsplus") => slot_ui::ds_sticker_face(&fields),
-        _ => sticker_face(&fields),
+    let face = match (brick, crate::baseos::var("BASEOS_TARGET").as_deref()) {
+        (Some(pro), _) => slot_ui::brick_sticker_face(&fields, pro),
+        (None, Some("rgdsplus")) => slot_ui::ds_sticker_face(&fields),
+        (None, _) => sticker_face(&fields),
     };
     let (w, h) = (face.w, face.h);
     let id = upload(compositor, &mut state.tex, face);

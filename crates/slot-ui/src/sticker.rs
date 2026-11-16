@@ -372,6 +372,221 @@ pub fn sticker_face(f: &StickerFields) -> UndoFace {
     }
 }
 
+/// The Brick's About sticker, after the label on the back of the Game Boy the Brick is shaped
+/// like: a black label with an inset rule, a white serial sticker, the maker's name in type.
+pub const BRICK_CREDITS: [&str; 12] = [
+    "THE EXQUISITE SKEUOMORPHIC",
+    "ARTWORK MADE BY MARKUS.",
+    "EMULATION POWERED BY MGBA,",
+    "GPSP AND GAMBATTE. SLOT OS",
+    "AND CPU CLOCKS FROM",
+    "LORDNORDYX'S SLOT-BRICK.",
+    "BRICK PORT BY MATITIKA.",
+    "TYPE IS OPEN SANS AND NERD",
+    "FONTS SYMBOLS BY RYAN L",
+    "MCINTYRE. THE PANEL MASK IS",
+    "FROM GIGAHERZ'S LCD3X. CART",
+    "SOUNDS: A CHILDHOOD GAMEBOY.",
+];
+
+const BRICK_RADIUS: f32 = 16.0;
+const BRICK_RULE: [u8; 3] = [0x8a, 0x86, 0x87];
+const PAPER: [u8; 3] = [0xf4, 0xf2, 0xee];
+const WORDMARK_PX: f32 = 25.0;
+const WORDMARK_TRACKING: f32 = 3.0;
+
+/// The model number on the Brick's own board: TG3040 for the Brick, TG4040 for the Pro.
+pub fn brick_model_no(pro: bool) -> &'static str {
+    match pro {
+        true => "TG4040",
+        false => "TG3040",
+    }
+}
+
+pub fn brick_head_rows(f: &StickerFields) -> [String; 3] {
+    [
+        format!("MODEL NO. {}", f.model),
+        format!("RATING : 5V{DC}2A"),
+        match f.battery {
+            Some(p) => format!("BATTERY : LI-ION ({p}%)"),
+            None => "BATTERY : LI-ION".to_string(),
+        },
+    ]
+}
+
+fn brick_version_lines(f: &StickerFields) -> Vec<String> {
+    let mut out = vec![format!("VERSION {}", f.version)];
+    out.push(match f.baseos {
+        Some(os) => format!("SLOT OS {os}"),
+        None => "ON TRIMUI FIRMWARE".to_string(),
+    });
+    out
+}
+
+/// Every line the Brick sticker prints, for tests and screen readers alike.
+pub fn brick_sticker_lines(f: &StickerFields, pro: bool) -> Vec<String> {
+    let mut out: Vec<String> = brick_head_rows(f).into();
+    out.extend(BRICK_CREDITS.iter().map(|s| s.to_string()));
+    out.extend(ORIGIN.iter().map(|s| s.to_string()));
+    let (body, check) = split_check(f.serial);
+    out.push(format!("{body} {check}"));
+    out.push(brick_wordmark(pro).to_string());
+    out.push(COPYRIGHT.to_string());
+    out.extend(brick_version_lines(f));
+    out.push(HOME.to_string());
+    out
+}
+
+fn brick_wordmark(pro: bool) -> &'static str {
+    match pro {
+        true => "TRIMUI BRICK PRO",
+        false => "TRIMUI BRICK",
+    }
+}
+
+/// How much of the pixel at (x, y) lies inside the rounded rectangle, 0 to 1.
+fn rounded(x: u32, y: u32, (rx, ry, rw, rh): (f32, f32, f32, f32), r: f32) -> f32 {
+    let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
+    let cx = px.clamp(rx + r, rx + rw - r);
+    let cy = py.clamp(ry + r, ry + rh - r);
+    let (dx, dy) = (px - cx, py - cy);
+    let inside_box = px >= rx && px <= rx + rw && py >= ry && py <= ry + rh;
+    if !inside_box {
+        return 0.0;
+    }
+    (r - (dx * dx + dy * dy).sqrt() + 0.5).clamp(0.0, 1.0)
+}
+
+/// A few grey levels of grain, the same every time, so the label reads as printed stock.
+fn grain(x: u32, y: u32) -> i32 {
+    let mut h = x.wrapping_mul(374_761_393) ^ y.wrapping_mul(668_265_263);
+    h = (h ^ (h >> 13)).wrapping_mul(1_274_126_177);
+    (h >> 28) as i32 - 8
+}
+
+impl Canvas {
+    /// Fills a rounded rectangle, with grain, blending its anti-aliased edge.
+    fn fill_rounded(&mut self, rect: (f32, f32, f32, f32), r: f32, c: [u8; 3], grainy: i32) {
+        for y in 0..self.h {
+            for x in 0..self.w {
+                let cover = rounded(x, y, rect, r);
+                if cover <= 0.0 {
+                    continue;
+                }
+                let g = grain(x, y) * grainy / 8;
+                let at = ((y * self.w + x) * 4) as usize;
+                let under_a = self.px[at + 3] as f32 / 255.0;
+                for (k, &ink) in c.iter().enumerate() {
+                    let ink = (ink as i32 + g).clamp(0, 255) as f32;
+                    let under = self.px[at + k] as f32;
+                    self.px[at + k] = (ink * cover + under * (1.0 - cover)).round() as u8;
+                }
+                self.px[at + 3] = ((cover + under_a * (1.0 - cover)) * 255.0).round() as u8;
+            }
+        }
+    }
+
+    /// A rounded rule `t` wide just inside `rect`.
+    fn rule_rounded(&mut self, rect: (f32, f32, f32, f32), r: f32, t: f32, c: [u8; 3]) {
+        let (rx, ry, rw, rh) = rect;
+        let inner = (rx + t, ry + t, rw - 2.0 * t, rh - 2.0 * t);
+        for y in 0..self.h {
+            for x in 0..self.w {
+                let cover = rounded(x, y, rect, r) - rounded(x, y, inner, (r - t).max(0.0));
+                if cover <= 0.0 {
+                    continue;
+                }
+                let at = ((y * self.w + x) * 4) as usize;
+                for (k, &ink) in c.iter().enumerate() {
+                    let under = self.px[at + k] as f32;
+                    self.px[at + k] = (ink as f32 * cover + under * (1.0 - cover)).round() as u8;
+                }
+            }
+        }
+    }
+}
+
+pub fn brick_sticker_face(f: &StickerFields, pro: bool) -> UndoFace {
+    let (w, h) = (STICKER_W, STICKER_H);
+    let mut c = Canvas::blank(w, h);
+    let label = (0.0, 0.0, w as f32, h as f32);
+    c.fill_rounded(label, BRICK_RADIUS, BLACK, 3);
+    c.rule_rounded(
+        (6.0, 6.0, w as f32 - 12.0, h as f32 - 12.0),
+        BRICK_RADIUS - 5.0,
+        1.5,
+        BRICK_RULE,
+    );
+
+    let left = MARGIN + 6.0;
+    let mut y = MARGIN + 4.0;
+    for (n, line) in brick_head_rows(f).iter().enumerate() {
+        if n == 1 {
+            if let Some((before, after)) = line.split_once(DC) {
+                let bw = c.print_measure(before, HEAD_PX);
+                c.print(left, y, before, HEAD_PX, WHITE);
+                let dw = c.dc(left + bw + 4.0, y, HEAD_PX, WHITE);
+                y = c.print(left + bw + dw + 8.0, y, after, HEAD_PX, WHITE);
+                continue;
+            }
+        }
+        y = c.print(left, y, line, HEAD_PX, WHITE);
+    }
+    y += 2.0;
+    for line in BRICK_CREDITS {
+        y = c.print(left, y, line, BODY_PX, WHITE);
+    }
+
+    // the serial sticker, white paper stuck on the label
+    let (panel_x, panel_y, panel_w, panel_h) = (232.0, 18.0, 410.0, 112.0);
+    c.fill_rounded((panel_x, panel_y, panel_w, panel_h), 6.0, PAPER, 2);
+    let bars_y = panel_y as u32 + 10;
+    let bars_h = 58;
+    c.barcode(
+        panel_x as u32,
+        panel_w as u32,
+        bars_y,
+        bars_h,
+        &format!("SLOT-{}", f.serial),
+    );
+    c.serial(
+        panel_x as u32,
+        panel_w as u32,
+        (bars_y + bars_h + 4) as f32,
+        f.serial,
+    );
+
+    let right_edge = panel_x + panel_w;
+    let mark = Canvas::cased(brick_wordmark(pro), WORDMARK_PX);
+    let mark = text::Layout {
+        tracking: WORDMARK_TRACKING,
+        ..mark
+    };
+    let mark_w = text::label_font().map_or(0.0, |font| {
+        text::line_width(font, brick_wordmark(pro), WORDMARK_PX, WORDMARK_TRACKING)
+    });
+    // from the bottom up: the type's lines, then the wordmark above them
+    let foot_y = h as f32 - MARGIN - 6.0 - BODY_PX * 1.35;
+    let right: Vec<String> = [COPYRIGHT.to_string()]
+        .into_iter()
+        .chain(brick_version_lines(f))
+        .chain([HOME.to_string()])
+        .collect();
+    let line_h = SMALL_PX * 1.35;
+    let mut ry = foot_y + BODY_PX * 1.35 - line_h * right.len() as f32;
+    let mark_y = ry - WORDMARK_PX * 1.35 + 2.0;
+    c.print_layout(right_edge - mark_w - 4.0, mark_y, &mark, WHITE);
+    for line in &right {
+        let lw = c.print_measure(line, SMALL_PX);
+        ry = c.print(right_edge - lw - 4.0, ry, line, SMALL_PX, WHITE);
+    }
+    c.print(left, foot_y, ORIGIN[0], BODY_PX, WHITE);
+    let maker_w = c.print_measure(ORIGIN[1], BODY_PX);
+    c.print(panel_x - 14.0 - maker_w, foot_y, ORIGIN[1], BODY_PX, WHITE);
+
+    UndoFace { rgba: c.px, w, h }
+}
+
 pub const DS_STICKER_W: u32 = 600;
 pub const DS_STICKER_H: u32 = 368;
 

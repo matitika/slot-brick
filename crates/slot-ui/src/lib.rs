@@ -158,8 +158,9 @@ pub use slot_chrome::{
     MOUTH_H, MOUTH_W,
 };
 pub use sticker::{
-    draw_sticker, ds_head_rows, ds_sticker_face, ds_sticker_lines, head_rows, sticker_face,
-    sticker_lines, sticker_rect, sticker_rect_sized, StickerFields, COPYRIGHT, CREDITS, DC,
+    brick_head_rows, brick_model_no, brick_sticker_face, brick_sticker_lines, draw_sticker,
+    ds_head_rows, ds_sticker_face, ds_sticker_lines, head_rows, sticker_face, sticker_lines,
+    sticker_rect, sticker_rect_sized, StickerFields, BRICK_CREDITS, COPYRIGHT, CREDITS, DC,
     DS_CREDITS, DS_STICKER_H, DS_STICKER_W, HOME, ORIGIN, STICKER_H, STICKER_W,
 };
 pub use toast::{toast_box, toast_face, toast_face_text, toast_rect, Toast};
