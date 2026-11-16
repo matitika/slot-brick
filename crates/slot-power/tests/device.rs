@@ -607,6 +607,10 @@ fn the_charging_led_is_left_to_the_kernel() {
     let mut p = platform(&d);
     p.set_led(LedState::Running);
     p.set_led(LedState::Charging);
-    assert_eq!(read(&d, "amber:charging/brightness"), "0", "slot drove the kernel's charging LED");
+    assert_eq!(
+        read(&d, "amber:charging/brightness"),
+        "0",
+        "slot drove the kernel's charging LED"
+    );
     assert_eq!(read(&d, "green:power/brightness"), "255");
 }

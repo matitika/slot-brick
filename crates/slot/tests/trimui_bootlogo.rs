@@ -1,7 +1,13 @@
-use slot::bootlogo::{decode_any, encode, encode_v5, fit_to, refresh_slot_os, Bmp, Outcome, BRICK_PANEL};
+use slot::bootlogo::{
+    decode_any, encode, encode_v5, fit_to, refresh_slot_os, Bmp, Outcome, BRICK_PANEL,
+};
 
 fn solid(w: usize, h: usize, c: [u8; 3]) -> Bmp {
-    Bmp { width: w, height: h, rgb: vec![c; w * h] }
+    Bmp {
+        width: w,
+        height: h,
+        rgb: vec![c; w * h],
+    }
 }
 
 #[test]
@@ -27,7 +33,10 @@ fn a_logo_of_another_size_is_fitted_and_centred() {
     assert_eq!(fitted.rgb[10 * 1024 + 500], [9, 9, 9], "the band above");
     let red = fitted.rgb.iter().position(|c| *c == [255, 0, 0]).unwrap();
     let (x, y) = (red % 1024, red / 1024);
-    assert!((508..=516).contains(&x) && (382..=390).contains(&y), "the centre stays the centre: {x},{y}");
+    assert!(
+        (508..=516).contains(&x) && (382..=390).contains(&y),
+        "the centre stays the centre: {x},{y}"
+    );
 }
 
 #[test]
@@ -40,12 +49,20 @@ fn the_chosen_logo_is_installed_then_the_image_s_own_comes_back() {
     assert_eq!(refresh_slot_os(root).unwrap(), Outcome::Same);
     // a 24-bit logo from Boot Logo Studio, another size
     std::fs::create_dir_all(root.join("Config")).unwrap();
-    std::fs::write(root.join("Config/bootlogo.bmp"), encode(&solid(640, 480, [200, 0, 0]))).unwrap();
+    std::fs::write(
+        root.join("Config/bootlogo.bmp"),
+        encode(&solid(640, 480, [200, 0, 0])),
+    )
+    .unwrap();
     assert_eq!(refresh_slot_os(root).unwrap(), Outcome::Installed);
     let shown = decode_any(&std::fs::read(root.join("bootlogo.bmp")).unwrap()).unwrap();
     assert_eq!((shown.width, shown.height), BRICK_PANEL);
     assert_eq!(shown.rgb[384 * 1024 + 512], [200, 0, 0]);
-    assert_eq!(refresh_slot_os(root).unwrap(), Outcome::Same, "already shown");
+    assert_eq!(
+        refresh_slot_os(root).unwrap(),
+        Outcome::Same,
+        "already shown"
+    );
     // with no wordmark on the card, Gamebit's Restore brings the image's own back
     std::fs::remove_file(root.join("Config/bootlogo.bmp")).unwrap();
     assert_eq!(refresh_slot_os(root).unwrap(), Outcome::Installed);
@@ -66,10 +83,18 @@ fn with_none_chosen_upstream_s_wordmark_is_centred_as_on_the_anbernics() {
     assert_eq!(refresh_slot_os(root).unwrap(), Outcome::Installed);
     let shown = decode_any(&std::fs::read(root.join("bootlogo.bmp")).unwrap()).unwrap();
     assert_eq!((shown.width, shown.height), BRICK_PANEL);
-    assert_eq!(shown.rgb[0], [11, 14, 17], "the wordmark's ground fills the screen");
+    assert_eq!(
+        shown.rgb[0],
+        [11, 14, 17],
+        "the wordmark's ground fills the screen"
+    );
     // at its own size, centred: (1024-196)/2 + 98, (768-75)/2 + 37
     assert_eq!(shown.rgb[(346 + 37) * 1024 + 414 + 98], [255, 255, 255]);
-    assert_eq!(std::fs::read(root.join("bootlogo.slotos.bmp")).unwrap(), own, "the image's own kept");
+    assert_eq!(
+        std::fs::read(root.join("bootlogo.slotos.bmp")).unwrap(),
+        own,
+        "the image's own kept"
+    );
     assert_eq!(refresh_slot_os(root).unwrap(), Outcome::Same);
 }
 

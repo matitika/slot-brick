@@ -456,7 +456,9 @@ impl KmsSurface {
                     Some(a)
                 }
                 Err(e) => {
-                    eprintln!("slot: kms: atomic unavailable ({e}), flipping each panel on its own");
+                    eprintln!(
+                        "slot: kms: atomic unavailable ({e}), flipping each panel on its own"
+                    );
                     None
                 }
             };

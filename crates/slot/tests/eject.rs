@@ -375,6 +375,12 @@ fn an_eject_is_on_the_card_once_saves_settle() {
     a.apply(Action::Eject);
     a.settle_saves();
     let r = StateRing::new(d.path(), Platform::Gba, Core::Mgba, "Emerald");
-    assert_eq!(r.read_resume().unwrap().expect("the eject wrote no resume").len(), 1024);
+    assert_eq!(
+        r.read_resume()
+            .unwrap()
+            .expect("the eject wrote no resume")
+            .len(),
+        1024
+    );
     assert_eq!(read_slot_state(d.path()).cart, None);
 }

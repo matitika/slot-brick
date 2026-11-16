@@ -35,7 +35,10 @@ pub fn save_rgba(path: &Path, w: u32, h: u32, rgba: &[u8]) {
         wr.write_image_data(&rgb)?;
         wr.finish()
     });
-    match encoded.map_err(std::io::Error::other).and_then(|_| std::fs::write(path, &out)) {
+    match encoded
+        .map_err(std::io::Error::other)
+        .and_then(|_| std::fs::write(path, &out))
+    {
         Ok(()) => eprintln!("slot: capture: wrote {}", path.display()),
         Err(e) => eprintln!("slot: capture {}: {e}", path.display()),
     }
@@ -68,7 +71,10 @@ pub fn save_fb0(root: &Path) {
         return;
     }
     let (pw, ph) = pair(attr("mode").and_then(|m| {
-        let m = m.trim().trim_start_matches(|c: char| !c.is_ascii_digit()).to_string();
+        let m = m
+            .trim()
+            .trim_start_matches(|c: char| !c.is_ascii_digit())
+            .to_string();
         let dims = m.split(['p', 'i', '-']).next()?.replace('x', ",");
         Some(dims)
     }))
@@ -78,7 +84,9 @@ pub fn save_fb0(root: &Path) {
         return;
     };
     let page_bytes = (stride * ph) as usize;
-    let pages = (raw.len() / page_bytes.max(1)).min((vh / ph.max(1)).max(1) as usize).min(4);
+    let pages = (raw.len() / page_bytes.max(1))
+        .min((vh / ph.max(1)).max(1) as usize)
+        .min(4);
     for n in 0..pages {
         let page = &raw[n * page_bytes..(n + 1) * page_bytes];
         let mut rgba = Vec::with_capacity((pw * ph * 4) as usize);

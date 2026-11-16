@@ -10,12 +10,11 @@ pub mod art;
 pub mod audio;
 pub mod baseos;
 pub mod bezel;
-pub mod brick_power;
 pub mod boot_time;
 pub mod bootlogo;
 pub mod box_art;
+pub mod brick_power;
 pub mod build_info;
-pub mod frame_capture;
 pub mod cable;
 pub mod card_log;
 pub mod cart_faces;
@@ -23,12 +22,14 @@ pub mod core;
 pub mod core_picker;
 #[cfg(unix)]
 pub mod crash;
+pub mod frame_capture;
 #[cfg(not(unix))]
 pub mod crash {
     pub fn install() {}
 }
 pub mod drc;
 pub mod ds_view;
+pub mod editing;
 pub mod emu;
 pub mod face_builder;
 pub mod fetch_art;
@@ -49,19 +50,18 @@ pub mod link_state;
 pub mod loading_mark;
 pub mod network_faces;
 pub mod networks;
+pub mod overlay;
 pub mod pacer;
 pub mod panel_turn;
 pub mod persist;
-pub mod editing;
 pub mod prefetch;
 pub mod print_scene;
 pub mod resample;
 pub mod rewind;
 pub mod romm;
-pub mod overlay;
 pub mod root;
-pub mod server;
 pub mod screen;
+pub mod server;
 pub mod session;
 pub mod shot_loader;
 pub mod shot_writer;

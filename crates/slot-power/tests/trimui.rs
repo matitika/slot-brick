@@ -20,7 +20,15 @@ fn brick_pro_tree() -> (TempDir, TempDir) {
     fs::write(motor.join("voltage"), "0").unwrap();
     let anim = sys.path().join("class/led_anim");
     fs::create_dir_all(&anim).unwrap();
-    for f in ["max_scale", "max_scale_f1f2", "max_scale_lr", "effect_m", "effect_f1", "effect_f2", "effect_lr"] {
+    for f in [
+        "max_scale",
+        "max_scale_f1f2",
+        "max_scale_lr",
+        "effect_m",
+        "effect_f1",
+        "effect_f2",
+        "effect_lr",
+    ] {
         fs::write(anim.join(f), "0").unwrap();
     }
     (sys, dev)
@@ -156,13 +164,25 @@ fn every_led_zone_of_the_brick_follows_the_state() {
     fs::write(sys.path().join("class/led_anim/max_scale_f1f2"), "60").unwrap();
     brick.set_led(LedState::Off);
     for scale in ["max_scale", "max_scale_f1f2", "max_scale_lr"] {
-        assert_eq!(read(&sys, &format!("class/led_anim/{scale}")), "0", "{scale}");
+        assert_eq!(
+            read(&sys, &format!("class/led_anim/{scale}")),
+            "0",
+            "{scale}"
+        );
     }
     brick.set_led(LedState::Running);
     for zone in ["m", "f1", "f2", "lr"] {
-        assert_eq!(read(&sys, &format!("class/led_anim/effect_rgb_hex_{zone}")), "00FF00", "{zone}");
+        assert_eq!(
+            read(&sys, &format!("class/led_anim/effect_rgb_hex_{zone}")),
+            "00FF00",
+            "{zone}"
+        );
     }
     for scale in ["max_scale", "max_scale_f1f2", "max_scale_lr"] {
-        assert_ne!(read(&sys, &format!("class/led_anim/{scale}")), "0", "{scale}");
+        assert_ne!(
+            read(&sys, &format!("class/led_anim/{scale}")),
+            "0",
+            "{scale}"
+        );
     }
 }

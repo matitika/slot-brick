@@ -217,7 +217,11 @@ pub fn chosen(card: &Path) -> Option<Logo> {
 
 pub fn remember(card: &Path) {
     let user = card.join(USER_LOGO);
-    let source = if user.is_file() { user } else { card.join(CARD_LOGO) };
+    let source = if user.is_file() {
+        user
+    } else {
+        card.join(CARD_LOGO)
+    };
     let Ok(logo) = fs::read(source) else {
         return;
     };
@@ -323,7 +327,11 @@ pub fn fit_to(img: &Bmp, (w, h): (usize, usize)) -> Option<Bmp> {
         return None;
     }
     if (img.width, img.height) == (w, h) {
-        return Some(Bmp { width: w, height: h, rgb: img.rgb.clone() });
+        return Some(Bmp {
+            width: w,
+            height: h,
+            rgb: img.rgb.clone(),
+        });
     }
     let k = (w as f64 / img.width as f64).min(h as f64 / img.height as f64);
     let (dw, dh) = (
@@ -339,7 +347,11 @@ pub fn fit_to(img: &Bmp, (w, h): (usize, usize)) -> Option<Bmp> {
             rgb[(y0 + y) * w + x0 + x] = img.rgb[sy * img.width + sx];
         }
     }
-    Some(Bmp { width: w, height: h, rgb })
+    Some(Bmp {
+        width: w,
+        height: h,
+        rgb,
+    })
 }
 
 /// 32-bit BMP, V5 header (BI_BITFIELDS, sRGB), rows bottom-up: the form TrimUI's u-boot shows.
@@ -384,7 +396,10 @@ pub fn encode_v5(img: &Bmp) -> Vec<u8> {
 pub fn refresh_slot_os(card: &Path) -> io::Result<Outcome> {
     let target = card.join(LOGO);
     let original = card.join(SLOT_OS_ORIGINAL);
-    let img = match (fs::read(card.join(USER_LOGO)), fs::read(card.join(CARD_LOGO))) {
+    let img = match (
+        fs::read(card.join(USER_LOGO)),
+        fs::read(card.join(CARD_LOGO)),
+    ) {
         (Ok(chosen), _) => decode_any(&chosen).and_then(|b| fit_to(&b, BRICK_PANEL)),
         (Err(_), Ok(mark)) => decode_any(&mark).and_then(|m| compose(&m, BRICK_PANEL)),
         (Err(_), Err(_)) => {

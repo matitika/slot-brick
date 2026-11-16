@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use slot::frontend::Frontend;
 use slot::app::BottomSource;
-use slot::pacer::Pacer;
-use slot::screen::Screen;
+use slot::frontend::Frontend;
 use slot::input::DeviceInput;
+use slot::pacer::Pacer;
 use slot::panel_turn::{panel_turn, PanelTurn};
+use slot::screen::Screen;
 use slot_gfx::{Compositor, DsPass, DsScreen, FbdevSurface, KmsSurface, Surface};
 use slot_power::{trace_first_frame, Board, DevicePlatform};
 
@@ -17,7 +17,6 @@ const TRIMUI_CARD: &str = "/mnt/SDCARD";
 const MIN_FRAME: Duration = Duration::from_millis(12);
 
 const STEP_TIMEOUT: Duration = Duration::from_millis(12);
-
 
 const LOG_SYNC: Duration = Duration::from_secs(1);
 
@@ -56,7 +55,16 @@ fn cpu_now() -> String {
         })
         .filter_map(|s| s.trim().parse::<i64>().ok())
         .max()
-        .map(|t| format!("{:.0} C", if t > 1000 { t as f64 / 1000.0 } else { t as f64 }))
+        .map(|t| {
+            format!(
+                "{:.0} C",
+                if t > 1000 {
+                    t as f64 / 1000.0
+                } else {
+                    t as f64
+                }
+            )
+        })
         .unwrap_or_else(|| "?".into());
     format!("cpu {khz} kHz, {temp}")
 }
@@ -69,7 +77,10 @@ fn wait_for_gpu() {
     while !ready.exists() && since.elapsed() < GPU_WAIT {
         std::thread::sleep(Duration::from_millis(5));
     }
-    eprintln!("slot: GPU driver ready after {} ms", since.elapsed().as_millis());
+    eprintln!(
+        "slot: GPU driver ready after {} ms",
+        since.elapsed().as_millis()
+    );
     slot::boot_time::mark("gpu");
 }
 
@@ -79,7 +90,10 @@ pub fn run() {
         .name("slot-fonts".into())
         .spawn(slot_ui::warm_fonts);
     let build = slot::build_info::Build::current();
-    eprintln!("slot: build {} {} ({})", build.version, build.hash, build.date);
+    eprintln!(
+        "slot: build {} {} ({})",
+        build.version, build.hash, build.date
+    );
     let board = Board::detect();
     eprintln!("slot: board {board:?}");
     let root = std::env::var_os("SLOT_ROOT")
@@ -110,8 +124,7 @@ pub fn run() {
     {
         Some("rk3568") => KmsSurface::new().map(|s| Box::new(s) as Box<dyn Surface>),
         // the Brick's PowerVR takes no native fbdev window
-        _ => FbdevSurface::with_window(!board.is_trimui())
-            .map(|s| Box::new(s) as Box<dyn Surface>),
+        _ => FbdevSurface::with_window(!board.is_trimui()).map(|s| Box::new(s) as Box<dyn Surface>),
     };
     let mut surface = match opened {
         Ok(s) => s,
@@ -217,7 +230,9 @@ pub fn run() {
         .spawn(sync_log_writes);
     let mut drawn = false;
     let mut ds = match surface.panel_count() > 1 {
-        true => DsPass::new().map_err(|e| eprintln!("slot: ds pass: {e}")).ok(),
+        true => DsPass::new()
+            .map_err(|e| eprintln!("slot: ds pass: {e}"))
+            .ok(),
         false => None,
     };
     frontend.set_two_panels(ds.is_some());
@@ -227,7 +242,10 @@ pub fn run() {
     frontend.drive_emulator();
     let mut pacer = match surface.refresh_period() {
         Some(period) => {
-            eprintln!("slot: pace: fixed at the panel's {:.3} ms", period.as_secs_f64() * 1e3);
+            eprintln!(
+                "slot: pace: fixed at the panel's {:.3} ms",
+                period.as_secs_f64() * 1e3
+            );
             Pacer::fixed(period)
         }
         None => Pacer::new(),
@@ -252,15 +270,15 @@ pub fn run() {
         frontend.advance(&mut input);
         frontend.set_ds_touch(input.touch());
         if frontend.restarting() {
-        if let Some(cpu) = cpu.as_mut() {
-            cpu.restore();
-        }
+            if let Some(cpu) = cpu.as_mut() {
+                cpu.restore();
+            }
             frontend.restart();
         }
         if frontend.relaunching() {
-        if let Some(cpu) = cpu.as_mut() {
-            cpu.restore();
-        }
+            if let Some(cpu) = cpu.as_mut() {
+                cpu.restore();
+            }
             frontend.relaunch();
             return;
         }
@@ -268,9 +286,9 @@ pub fn run() {
             frontend.repair();
         }
         if frontend.powering_off() {
-        if let Some(cpu) = cpu.as_mut() {
-            cpu.restore();
-        }
+            if let Some(cpu) = cpu.as_mut() {
+                cpu.restore();
+            }
             frontend.poweroff();
             return;
         }
@@ -357,7 +375,9 @@ pub fn run() {
         if let Some(pass) = ds.as_ref() {
             let power = frontend.ds_frame().map(|_| frontend.screen_power());
             let drawn = match frontend.bottom_source() {
-                BottomSource::Compositor => draw_menu_below(&mut *surface, &mut frontend, &mut compositor, window),
+                BottomSource::Compositor => {
+                    draw_menu_below(&mut *surface, &mut frontend, &mut compositor, window)
+                }
                 BottomSource::DsScreen => draw_bottom(&mut *surface, pass, power),
                 BottomSource::Black => draw_bottom(&mut *surface, pass, None),
             };
@@ -375,7 +395,13 @@ pub fn run() {
             missed += u32::from(dropped);
             early += u32::from(swap_took > pacer.period() / 2);
             stale += u32::from(late);
-            stages.add([stepped - began, rendered - stepped, swap - rendered, swap_took, bottom_took]);
+            stages.add([
+                stepped - began,
+                rendered - stepped,
+                swap - rendered,
+                swap_took,
+                bottom_took,
+            ]);
             if frontend.has_game_core() {
                 for (acc, ms) in [
                     (&mut queued, frontend.audio_queued_ms()),
@@ -526,7 +552,11 @@ fn draw_menu_below(
     swapped
 }
 
-fn draw_bottom(surface: &mut dyn Surface, pass: &DsPass, power: Option<f32>) -> Result<(), slot_gfx::GfxError> {
+fn draw_bottom(
+    surface: &mut dyn Surface,
+    pass: &DsPass,
+    power: Option<f32>,
+) -> Result<(), slot_gfx::GfxError> {
     surface.select_panel(1)?;
     let panel = surface.window_size();
     match power {

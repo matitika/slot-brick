@@ -36,7 +36,10 @@ fn the_leds_setting_picks_the_brick_s_led_state() {
     assert!(app.hidden_rows().contains(&QuickRow::Leds));
     app.set_led_modes(true);
     assert!(!app.hidden_rows().contains(&QuickRow::Leds));
-    assert!(app.hidden_rows().contains(&QuickRow::LidOff), "the Brick has no lid");
+    assert!(
+        app.hidden_rows().contains(&QuickRow::LidOff),
+        "the Brick has no lid"
+    );
     // Battery, the default: dark while running (no battery read yet counts as running)
     assert_eq!(app.led_state(), LedState::Off);
     let mut s = slot_store::read_slot_state(d.path());

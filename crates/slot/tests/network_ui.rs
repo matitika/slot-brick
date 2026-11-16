@@ -769,7 +769,11 @@ fn open_scan(a: &mut App) {
     open_networks(a);
     select(a, SCAN_NETWORKS);
     press(a, Btn::A);
-    assert!(matches!(a.phase(), Phase::NetworkScan { .. }), "{:?}", a.phase());
+    assert!(
+        matches!(a.phase(), Phase::NetworkScan { .. }),
+        "{:?}",
+        a.phase()
+    );
     settle(a);
 }
 
@@ -842,13 +846,20 @@ fn b_cancels_the_scan_and_lands_on_the_scan_row() {
     select(&mut a, SCAN_NETWORKS);
     press(&mut a, Btn::A);
     press(&mut a, Btn::B);
-    assert!(matches!(a.phase(), Phase::Networks { .. }), "{:?}", a.phase());
+    assert!(
+        matches!(a.phase(), Phase::Networks { .. }),
+        "{:?}",
+        a.phase()
+    );
     assert_eq!(selected_label(&a), SCAN_NETWORKS);
     settle(&mut a);
     let scans = log.lock().unwrap().iter().filter(|l| *l == "scan").count();
     settle(&mut a);
     settle(&mut a);
-    assert_eq!(log.lock().unwrap().iter().filter(|l| *l == "scan").count(), scans);
+    assert_eq!(
+        log.lock().unwrap().iter().filter(|l| *l == "scan").count(),
+        scans
+    );
 }
 
 #[test]

@@ -616,7 +616,12 @@ impl Drop for Motor {
 const ANIM_STATIC: u32 = 4;
 const ANIM_SCALE: u32 = 30;
 const ANIM_ZONES: [&str; 4] = ["m", "f1", "f2", "lr"];
-const ANIM_SCALES: [&str; 4] = ["max_scale", "max_scale_f1f2", "max_scale_lr", "max_scale_rear"];
+const ANIM_SCALES: [&str; 4] = [
+    "max_scale",
+    "max_scale_f1f2",
+    "max_scale_lr",
+    "max_scale_rear",
+];
 
 #[cfg(not(unix))]
 fn disp_brightness(_node: &Path, _value: u32) -> std::io::Result<()> {
@@ -840,9 +845,15 @@ impl Platform for DevicePlatform {
                     if !dir.join(format!("effect_{zone}")).is_file() {
                         continue;
                     }
-                    let _ = fs::write(dir.join(format!("effect_rgb_hex_{zone}")), format!("{rgb}\n"));
+                    let _ = fs::write(
+                        dir.join(format!("effect_rgb_hex_{zone}")),
+                        format!("{rgb}\n"),
+                    );
                     let _ = fs::write(dir.join(format!("effect_duration_{zone}")), "1000\n");
-                    let _ = fs::write(dir.join(format!("effect_{zone}")), format!("{ANIM_STATIC}\n"));
+                    let _ = fs::write(
+                        dir.join(format!("effect_{zone}")),
+                        format!("{ANIM_STATIC}\n"),
+                    );
                 }
                 if dir.join("effect_enable").is_file() {
                     let _ = fs::write(dir.join("effect_enable"), "1\n");

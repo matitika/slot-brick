@@ -654,7 +654,8 @@ fn tools_holds_the_network_tools() {
     let (_d, mut a, _) = on_carousel();
     common::connect(&mut a);
     for row in QuickRow::NETWORK {
-        let shown = (row != QuickRow::Romm || cfg!(feature = "romm")) && row.label() != "Fetch Box Art";
+        let shown =
+            (row != QuickRow::Romm || cfg!(feature = "romm")) && row.label() != "Fetch Box Art";
         assert_eq!(!a.hidden_rows().contains(&row), shown, "{row:?}");
     }
 }
@@ -668,9 +669,10 @@ fn tools_shows_the_message_when_not_connected() {
     press(&mut a, Btn::A);
     assert_eq!(a.quick_menu(), Some(QuickRow::Network));
     assert_eq!(a.update_text().map(|t| t.0), Some(NO_NETWORK.to_string()));
-    assert!(QuickRow::NETWORK
+    assert!(QuickRow::NETWORK.iter().all(|r| QuickRow::Network
+        .shown(&a.hidden_rows())
         .iter()
-        .all(|r| QuickRow::Network.shown(&a.hidden_rows()).iter().all(|s| s != r)));
+        .all(|s| s != r)));
 }
 
 #[test]
@@ -698,7 +700,9 @@ fn no_wifi_hardware_hides_tools_and_wifi() {
     let hidden = a.hidden_rows();
     assert!(hidden.contains(&QuickRow::Network));
     assert!(hidden.contains(&QuickRow::Wifi));
-    assert!(!QuickRow::MAIN.iter().any(|r| *r != QuickRow::Network && hidden.contains(r)));
+    assert!(!QuickRow::MAIN
+        .iter()
+        .any(|r| *r != QuickRow::Network && hidden.contains(r)));
 }
 
 #[test]
@@ -1762,7 +1766,9 @@ fn overlay_png(root: &std::path::Path, dir: &str, name: &str, w: u32, h: u32) {
     let mut enc = png::Encoder::new(&mut out, w, h);
     enc.set_color(png::ColorType::Rgba);
     let mut writer = enc.write_header().unwrap();
-    writer.write_image_data(&vec![0u8; (w * h * 4) as usize]).unwrap();
+    writer
+        .write_image_data(&vec![0u8; (w * h * 4) as usize])
+        .unwrap();
     drop(writer);
     std::fs::write(dir.join(name), out).unwrap();
 }
@@ -1771,7 +1777,11 @@ fn overlay_png(root: &std::path::Path, dir: &str, name: &str, w: u32, h: u32) {
 fn the_overlay_rows_hide_while_the_folders_are_empty() {
     let (_d, a, _) = on_carousel();
     let hidden = a.hidden_rows();
-    for row in [QuickRow::GbaOverlay, QuickRow::GbOverlay, QuickRow::GbcOverlay] {
+    for row in [
+        QuickRow::GbaOverlay,
+        QuickRow::GbOverlay,
+        QuickRow::GbcOverlay,
+    ] {
         assert!(hidden.contains(&row), "{row:?} shown with nothing to pick");
     }
 }
@@ -1785,7 +1795,10 @@ fn the_overlay_row_cycles_off_then_each_file_and_saves() {
     open_at(&mut a, QuickRow::GbcOverlay);
     for want in [Some("a"), Some("b"), None] {
         press(&mut a, Btn::Right);
-        assert_eq!(a.resolved_overlay(Platform::Gbc).map(|e| e.name).as_deref(), want);
+        assert_eq!(
+            a.resolved_overlay(Platform::Gbc).map(|e| e.name).as_deref(),
+            want
+        );
     }
     press(&mut a, Btn::Left);
     assert_eq!(read_slot_state(d.path()).overlay_gbc.as_deref(), Some("b"));
@@ -1800,7 +1813,10 @@ fn an_overlay_that_does_not_fit_this_screen_draws_nothing_and_stays_saved() {
     });
     overlay_png(d.path(), "GBA", "glass.png", 9999, 9);
     assert_eq!(a.resolved_overlay(Platform::Gba), None);
-    assert_eq!(read_slot_state(d.path()).overlay_gba.as_deref(), Some("glass"));
+    assert_eq!(
+        read_slot_state(d.path()).overlay_gba.as_deref(),
+        Some("glass")
+    );
 }
 
 #[cfg(feature = "nds")]
@@ -1811,6 +1827,9 @@ fn ds_keeps_its_own_overlay_pick() {
         ..SlotState::default()
     });
     overlay_png(d.path(), "NDS", "grid_tile.png", 4, 4);
-    assert_eq!(a.resolved_overlay(Platform::Nds).map(|e| e.name).as_deref(), Some("grid"));
+    assert_eq!(
+        a.resolved_overlay(Platform::Nds).map(|e| e.name).as_deref(),
+        Some("grid")
+    );
     assert_eq!(a.resolved_overlay(Platform::Gba), None);
 }
