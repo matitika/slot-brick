@@ -55,6 +55,14 @@ shows from the start after next. With none chosen, slot shows its own wordmark
 (`System/bootlogo.bmp`), as it does on the Anbernics; the Slot OS image's logo is kept as
 `bootlogo.slotos.bmp`. On stock firmware the Brick keeps TrimUI's own logo.
 
+## Frames
+
+Games on the Brick are framed by SkyWalker541's TrimUI-Brick-Overlays (CC0), made for the
+Brick's 1024x768: Game Boy and Game Boy Color at Integer (5x) and Fit, Game Boy Advance at
+Integer (4x) and Fit. Each system's Bezel setting picks them as Default, or None, or a frame of your own
+in `Bezels/<system>/` (a 1024x768 PNG, see-through where the game shows); SkyWalker541's other
+colours (blue LED, Japanese, Pokémon) drop in there as they are.
+
 ## Clock
 
 With Settings' network time on, slot sets the clock from an internet time server (pool.ntp.org)

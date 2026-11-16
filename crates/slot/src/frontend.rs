@@ -2274,6 +2274,9 @@ fn sync_game_bezel(app: &mut App, compositor: &mut Compositor, state: &mut Bezel
     if state.image.as_ref() != Some(&shown) {
         let rgba = match &shown.1 {
             BezelPick::None | BezelPick::Ags102 => None,
+            BezelPick::Default if app.brick_panel() => shown
+                .2
+                .and_then(|kind| slot_ui::brick_frame_face(platform, kind)),
             BezelPick::Default => shown
                 .2
                 .and_then(|kind| default_game_bezel_face(platform == Console::Gbc, kind, w, h)),

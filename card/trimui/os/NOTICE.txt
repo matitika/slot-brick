@@ -35,3 +35,7 @@ glibc, libstdc++, ALSA, busybox, wpa_supplicant, the FAT and partition tools and
 libraries they use are Debian 12 (bookworm) arm64 packages. Each package's copyright and
 licence file is in debian/, and debian/packages.txt lists the exact versions. Their
 source, at those versions: https://snapshot.debian.org and https://sources.debian.org.
+
+The Game Boy, Game Boy Color and Game Boy Advance frames shown around games on the Brick
+(assets/brick/) are from SkyWalker541's TrimUI-Brick-Overlays
+(github.com/SkyWalker541/TrimUI-Brick-Overlays), released under CC0 1.0.

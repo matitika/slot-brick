@@ -49,9 +49,9 @@ mod toast;
 
 pub use art::decode as decode_png;
 pub use backdrop::{
-    bezel_face, blur_background, blur_background_at, default_background, default_background_at,
-    default_game_bezel_face, draw_backdrop, draw_ground, game_bezel_face, reference_ground_covers,
-    wallpaper_face, BezelArt, SLOT_BLUR_WALLPAPER_PNG, SLOT_WALLPAPER_PNG,
+    bezel_face, blur_background, blur_background_at, brick_frame_face, default_background,
+    default_background_at, default_game_bezel_face, draw_backdrop, draw_ground, game_bezel_face,
+    reference_ground_covers, wallpaper_face, BezelArt, SLOT_BLUR_WALLPAPER_PNG, SLOT_WALLPAPER_PNG,
 };
 pub use barcode::{code39, CODE39_NARROW, CODE39_WIDE};
 pub use battery::{draw_gauge, Gauge, BOLT_PX, GAUGE_H, GAUGE_W, WALL};

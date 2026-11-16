@@ -3335,7 +3335,8 @@ impl App {
 
     fn bezel_choices(&self, platform: Platform) -> Vec<BezelPick> {
         let mut choices = vec![BezelPick::None];
-        if platform.hardware() != Platform::Gba {
+        // GBA has default art only on the Brick (its own frames)
+        if platform.hardware() != Platform::Gba || self.brick_panel() {
             choices.push(BezelPick::Default);
         }
         if self.framed_panel() {
@@ -3370,6 +3371,10 @@ impl App {
             Platform::Gbc => &self.state.bezel_gbc,
         };
         let choices = self.bezel_choices(platform);
+        // GBA's own default, the AGS-102 strip, needs a 640x480 panel: on the Brick, its frame
+        if *pick == BezelPick::Ags102 && self.brick_panel() {
+            return BezelPick::Default;
+        }
         if choices.contains(pick) {
             return pick.clone();
         }
@@ -3543,13 +3548,12 @@ impl App {
         }
         let gba = self.playing_platform().hardware() == Platform::Gba;
         if self.brick_panel() {
-            // the Brick's Game Boy sizes: Band, 5x, and Fit to the panel's height
-            return match self.picture().0 {
-                _ if gba => None,
-                Sizing::Band => Some(BezelArt::Default),
-                Sizing::Integer => Some(BezelArt::Integer4x3),
-                Sizing::Fit => Some(BezelArt::Fit4x3),
-                Sizing::Panel => None,
+            // the Brick's own frames (brick_frame_face): its integer picture, and the one fit
+            // to the panel (GBA's Fit is its Band); none for the GB band or full screen
+            return match (self.picture().0, gba) {
+                (Sizing::Integer, _) => Some(BezelArt::Integer4x3),
+                (Sizing::Fit, _) | (Sizing::Band, true) => Some(BezelArt::Fit4x3),
+                _ => None,
             };
         }
         match (self.picture().0, self.framed_panel()) {
@@ -8859,9 +8863,9 @@ impl App {
         self.brick_frames = on;
     }
 
-    /// The Brick's 1024x768 panel (an 800x600 canvas), where the shell art is made at the
+    /// The Brick's 1024x768 panel (an 800x600 canvas), where its own frames are shown at the
     /// panel's own pixels.
-    fn brick_panel(&self) -> bool {
+    pub fn brick_panel(&self) -> bool {
         self.brick_frames && slot_gfx::panel_pixels(self.panel) == BRICK_PANEL
     }
 

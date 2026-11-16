@@ -1,4 +1,39 @@
-use slot::app::App;
+mod common;
+
+use common::{tmp_root_with_carts, tmp_root_with_gb_carts, tmp_root_with_gbc_carts, StubSnapshot};
+use slot::app::{App, Phase};
+use slot_store::{write_slot_state, BezelPick, Platform, Scale, SlotState};
+use slot_ui::BezelArt;
+use tempfile::TempDir;
+
+/// Playing a game on the Brick's panel, laid out as device_app lays out TrimUI.
+fn playing(platform: Platform, panel: (u32, u32), state: SlotState) -> (TempDir, App) {
+    slot_gfx::set_brick_layout(true);
+    let d = match platform {
+        Platform::Gb => tmp_root_with_gb_carts(&["Game"]),
+        Platform::Gbc => tmp_root_with_gbc_carts(&["Game"]),
+        _ => tmp_root_with_carts(&["Game"]),
+    };
+    write_slot_state(
+        d.path(),
+        &SlotState {
+            cart: Some("Game".into()),
+            cart_platform: Some(platform),
+            clock_set: true,
+            ..state
+        },
+    )
+    .unwrap();
+    let mut a = App::boot(d.path());
+    a.set_panel(panel);
+    a.set_snapshot(StubSnapshot::boxed());
+    a.on_core_ready();
+    for _ in 0..120 {
+        a.update(1.0 / 60.0);
+    }
+    assert!(matches!(a.phase(), Phase::Playing { .. }));
+    (d, a)
+}
 
 #[test]
 fn a_1024_by_768_panel_shows_the_lime_placeholder_unless_it_is_turned_off() {
@@ -53,4 +88,43 @@ fn the_leds_setting_picks_the_brick_s_led_state() {
     let mut app = App::boot(d.path());
     app.set_led_modes(true);
     assert_eq!(app.led_state(), LedState::Off);
+}
+
+#[test]
+fn the_brick_frames_its_integer_and_fit_pictures() {
+    for (platform, scale, want) in [
+        (Platform::Gb, Scale::SpFrame, None),
+        (Platform::Gb, Scale::Integer, Some(BezelArt::Integer4x3)),
+        (Platform::Gb, Scale::Fit, Some(BezelArt::Fit4x3)),
+        (Platform::Gbc, Scale::Integer, Some(BezelArt::Integer4x3)),
+        (Platform::Gba, Scale::Integer, Some(BezelArt::Integer4x3)),
+        (Platform::Gba, Scale::Fit, Some(BezelArt::Fit4x3)),
+    ] {
+        let state = match platform {
+            // GBA left at its stored default, the AGS-102 strip, which the Brick cannot show
+            Platform::Gba => SlotState {
+                scale_gba: scale,
+                ..SlotState::default()
+            },
+            Platform::Gbc => SlotState {
+                bezel_gbc: BezelPick::Default,
+                scale_gbc: scale,
+                ..SlotState::default()
+            },
+            _ => SlotState {
+                bezel_gb: BezelPick::Default,
+                scale_gb: scale,
+                ..SlotState::default()
+            },
+        };
+        let (_d, mut a) = playing(platform, (1024, 768), state);
+        a.set_brick_frames(true);
+        assert_eq!(a.bezel_art(), want, "{platform:?} {scale:?}");
+        assert_eq!(a.resolved_bezel(platform), BezelPick::Default);
+        assert_eq!(a.game_bezel_size(), (1024, 768));
+        if let Some(kind) = want {
+            let face = slot_ui::brick_frame_face(platform, kind).expect("a 1024x768 frame");
+            assert_eq!(face.len(), 1024 * 768 * 4);
+        }
+    }
 }
