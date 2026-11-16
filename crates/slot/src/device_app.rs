@@ -194,6 +194,8 @@ pub fn run() {
     frontend.set_self_updates(true);
     // upstream marks where 1024x768 frame art will go in lime; on the Brick, black
     frontend.set_placeholder_bezels(!board.is_trimui());
+    // and upstream's Game Boy shell art around the game, made at the Brick's size
+    frontend.set_brick_frames(board.is_trimui());
     // the Brick's LEDs: Settings → General → LEDs
     frontend.set_led_modes(board.is_trimui());
     // GBA's Scale setting picks fit, 4x or full screen on the Brick's panel

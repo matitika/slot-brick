@@ -348,3 +348,31 @@ fn a_suffixed_bezel_follows_the_scale_to_its_matching_file() {
     );
     assert_eq!(pick, BezelPick::None);
 }
+
+#[test]
+fn the_brick_frames_game_boy_at_its_own_size() {
+    for (scale, want) in [
+        (Scale::SpFrame, Some(BezelArt::Default)),
+        (Scale::Integer, Some(BezelArt::Integer4x3)),
+        (Scale::Fit, Some(BezelArt::Fit4x3)),
+        // not offered for Game Boy on the Brick: shown as the band
+        (Scale::FullScreen, Some(BezelArt::Default)),
+    ] {
+        let (_d, mut a) = playing(
+            Platform::Gb,
+            (1024, 768),
+            SlotState {
+                bezel_gb: BezelPick::Default,
+                scale_gb: scale,
+                ..SlotState::default()
+            },
+        );
+        assert_eq!(a.bezel_art(), None, "upstream's 1024x768: no art");
+        a.set_brick_frames(true);
+        assert_eq!(a.bezel_art(), want, "{scale:?}");
+        assert_eq!(a.game_bezel_size(), (1024, 768));
+    }
+    let (_d, mut a) = playing(Platform::Gba, (1024, 768), SlotState::default());
+    a.set_brick_frames(true);
+    assert_eq!(a.bezel_art(), None, "GBA keeps its own look");
+}

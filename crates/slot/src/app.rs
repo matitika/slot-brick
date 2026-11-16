@@ -705,6 +705,8 @@ pub struct App {
     /// False where the lime placeholder bezel stays off (TrimUI): a 1024x768 screen with no
     /// frame art yet shows black around the game instead.
     placeholder_bezels: bool,
+    /// the shell art around Game Boy on a 1024x768 panel too (the TrimUI Brick)
+    brick_frames: bool,
     controls: Controls,
     capture: Option<BindCapture>,
     plugged_face: Option<TexId>,
@@ -997,6 +999,7 @@ fn wallpaper_of_rack(rack: Rack, files: &[String]) -> Option<String> {
         })
 }
 
+const BRICK_PANEL: (u32, u32) = (1024, 768);
 const PLACEHOLDER_BEZEL: [f32; 4] = [50.0 / 255.0, 205.0 / 255.0, 50.0 / 255.0, 1.0];
 
 pub(crate) fn shift_down(draws: &mut [Draw], dy: f32) {
@@ -1243,6 +1246,7 @@ impl App {
             self_updates: true,
             led_modes: false,
             placeholder_bezels: true,
+            brick_frames: false,
             controls: Controls::default(),
             capture: None,
             plugged_face: None,
@@ -3522,7 +3526,7 @@ impl App {
     }
 
     pub fn shown_game_bezel(&self) -> Option<TexId> {
-        if self.picture_fills() || self.table_panel() {
+        if self.picture_fills() || (self.table_panel() && !self.brick_panel()) {
             return None;
         }
         if self.resolved_bezel(self.playing_platform()) == BezelPick::Default
@@ -3534,10 +3538,20 @@ impl App {
     }
 
     pub fn bezel_art(&self) -> Option<BezelArt> {
-        if self.picture_fills() || self.table_panel() {
+        if self.picture_fills() || (self.table_panel() && !self.brick_panel()) {
             return None;
         }
         let gba = self.playing_platform().hardware() == Platform::Gba;
+        if self.brick_panel() {
+            // the Brick's Game Boy sizes: Band, 5x, and Fit to the panel's height
+            return match self.picture().0 {
+                _ if gba => None,
+                Sizing::Band => Some(BezelArt::Default),
+                Sizing::Integer => Some(BezelArt::Integer4x3),
+                Sizing::Fit => Some(BezelArt::Fit4x3),
+                Sizing::Panel => None,
+            };
+        }
         match (self.picture().0, self.framed_panel()) {
             (Sizing::Band, _) => Some(BezelArt::Default),
             _ if gba => None,
@@ -7594,6 +7608,9 @@ impl App {
 
     pub fn game_bezel_size(&self) -> (u32, u32) {
         let c = self.canvas();
+        if self.brick_panel() {
+            return BRICK_PANEL;
+        }
         match slot_gfx::framed(self.panel) {
             true => (c.w as u32, c.h as u32),
             false => (OUT_W, OUT_H),
@@ -8836,6 +8853,16 @@ impl App {
 
     pub fn set_placeholder_bezels(&mut self, on: bool) {
         self.placeholder_bezels = on;
+    }
+
+    pub fn set_brick_frames(&mut self, on: bool) {
+        self.brick_frames = on;
+    }
+
+    /// The Brick's 1024x768 panel (an 800x600 canvas), where the shell art is made at the
+    /// panel's own pixels.
+    fn brick_panel(&self) -> bool {
+        self.brick_frames && slot_gfx::panel_pixels(self.panel) == BRICK_PANEL
     }
 
     fn table_panel(&self) -> bool {
