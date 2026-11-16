@@ -1714,6 +1714,10 @@ impl Frontend {
         self.session.app_mut().restart();
     }
 
+    pub fn set_wifi_rest(&mut self, on: bool) {
+        self.session.app_mut().set_wifi_rest(on);
+    }
+
     pub fn set_brick_frames(&mut self, on: bool) {
         self.session.app_mut().set_brick_frames(on);
     }

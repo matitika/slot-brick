@@ -93,7 +93,8 @@ fn the_leds_setting_picks_the_brick_s_led_state() {
 #[test]
 fn the_brick_frames_its_integer_and_fit_pictures() {
     for (platform, scale, want) in [
-        (Platform::Gb, Scale::SpFrame, None),
+        // the SP frame is not offered on the Brick: the stored default shows as Integer
+        (Platform::Gb, Scale::SpFrame, Some(BezelArt::Integer4x3)),
         (Platform::Gb, Scale::Integer, Some(BezelArt::Integer4x3)),
         (Platform::Gb, Scale::Fit, Some(BezelArt::Fit4x3)),
         (Platform::Gbc, Scale::Integer, Some(BezelArt::Integer4x3)),
@@ -127,4 +128,15 @@ fn the_brick_frames_its_integer_and_fit_pictures() {
             assert_eq!(face.len(), 1024 * 768 * 4);
         }
     }
+}
+
+#[test]
+fn the_brick_offers_game_boy_integer_and_fit_only() {
+    let (_d, mut a) = playing(Platform::Gbc, (1024, 768), SlotState::default());
+    a.set_brick_frames(true);
+    assert_eq!(a.scale_choices(Platform::Gbc), [Scale::Integer, Scale::Fit]);
+    assert_eq!(a.resolved_scale(Platform::Gbc), Scale::Integer);
+    assert_eq!(a.bezel_art(), Some(BezelArt::Integer4x3));
+    a.set_brick_frames(false);
+    assert!(a.scale_choices(Platform::Gbc).contains(&Scale::SpFrame));
 }

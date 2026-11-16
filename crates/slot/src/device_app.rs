@@ -196,6 +196,8 @@ pub fn run() {
     frontend.set_placeholder_bezels(!board.is_trimui());
     // and upstream's Game Boy shell art around the game, made at the Brick's size
     frontend.set_brick_frames(board.is_trimui());
+    // the radio off, not idle, when let go, and let go on a shelf idle for five minutes
+    frontend.set_wifi_rest(board.is_trimui());
     // the Brick's LEDs: Settings → General → LEDs
     frontend.set_led_modes(board.is_trimui());
     // GBA's Scale setting picks fit, 4x or full screen on the Brick's panel

@@ -193,6 +193,9 @@ const WIFI_SETTLE_MS: Millis = 2_000;
 const STUDIO_SLIDE_MS: f32 = 240.0;
 const WIFI_SAMPLE_MS: Millis = 5000;
 const WIFI_RETRY_MS: Millis = 60_000;
+/// On the Brick, the shelf left untouched this long rests the radio (switched off, not just
+/// disconnected) until the next press.
+const WIFI_REST_MS: Millis = 5 * 60_000;
 const WIFI_PROBE_MS: Millis = 1_000;
 const SUMMARY_WAIT_MS: f64 = 1500.0;
 const SLIP_SHUFFLE_PX: f32 = 28.0;
@@ -859,6 +862,12 @@ pub struct App {
     studio_write: Option<(std::thread::JoinHandle<bool>, Box<crate::studio::Studio>)>,
     studio_hex: Option<(String, crate::studio_view::Style)>,
     wifi_wanted_at: Option<Millis>,
+    /// the Brick: rest the radio on an idle shelf, and switch it off whenever it is let go
+    wifi_rest: bool,
+    /// when a button was last pressed, for the radio's rest
+    touched_at: Millis,
+    /// the radio is resting (for the log, once each way)
+    wifi_resting: bool,
     wifi: Option<(crate::wifi::Wifi, std::time::Instant, Millis)>,
     joined_hidden: Option<(String, bool)>,
     wifi_bars: u8,
@@ -1085,6 +1094,9 @@ impl App {
             studio_write: None,
             studio_hex: None,
             wifi_wanted_at: None,
+            wifi_rest: false,
+            touched_at: 0,
+            wifi_resting: false,
             wifi: None,
             joined_hidden: None,
             wifi_bars: 3,
@@ -4211,7 +4223,19 @@ impl App {
         )
     }
 
+    /// The stored Scale, except on the Brick, where Game Boy's SP frame is not offered (no
+    /// frame suits it there): it shows as Integer, the default's nearest.
     fn scale_of(&self, platform: Platform) -> Scale {
+        let stored = self.stored_scale(platform);
+        match stored {
+            Scale::SpFrame if self.brick_panel() && platform.hardware() != Platform::Gba => {
+                Scale::Integer
+            }
+            _ => stored,
+        }
+    }
+
+    fn stored_scale(&self, platform: Platform) -> Scale {
         match platform {
             Platform::Gba | Platform::Gbav => self.state.scale_gba,
             #[cfg(feature = "nds")]
@@ -4284,7 +4308,11 @@ impl App {
     pub fn scale_choices(&self, platform: Platform) -> Vec<Scale> {
         let mut seen = Vec::new();
         let mut choices = Vec::new();
+        let brick_gb = self.brick_panel() && platform.hardware() != Platform::Gba;
         for &scale in Self::scale_candidates(platform) {
+            if brick_gb && scale == Scale::SpFrame {
+                continue;
+            }
             let shown = self.shown_as(platform, VideoMode::Actual, scale, Stretch::Classic);
             match seen.iter().position(|s| *s == shown) {
                 Some(at) if choices[at] == Scale::SpFrame => choices[at] = scale,
@@ -6083,6 +6111,7 @@ impl App {
     }
 
     pub fn apply(&mut self, action: Action) {
+        self.touched_at = self.now();
         self.track_held_dir(action);
         match action {
             Action::LidClose => return self.doze(),
@@ -11370,7 +11399,8 @@ impl App {
     pub fn release_radio(&mut self) {
         self.wifi_wanted_at = None;
         if std::mem::take(&mut self.wifi_held) {
-            self.wifi_send(if self.state.wifi_off {
+            // the Brick's radio draws power with its link up even when unused: off, not idle
+            self.wifi_send(if self.state.wifi_off || self.wifi_rest {
                 crate::wifi::Cmd::PowerOff
             } else {
                 crate::wifi::Cmd::Release
@@ -11400,11 +11430,27 @@ impl App {
             && self.prejoin.is_none()
             && !self.shutting_down()
             && !self.state.wifi_off
+            && !self.radio_resting()
             && (self.has_saved()
                 || matches!(
                     self.phase,
                     Phase::Networks { .. } | Phase::NetworkScan { .. } | Phase::NetworkPage { .. }
                 ))
+    }
+
+    /// The Brick's shelf, untouched for WIFI_REST_MS with nothing on the network to finish.
+    fn radio_resting(&self) -> bool {
+        self.wifi_rest
+            && matches!(self.phase, Phase::Shelf)
+            && self.now().saturating_sub(self.touched_at) >= WIFI_REST_MS
+            && !self.art_busy()
+            && !self.updating()
+            && !self.update_busy
+    }
+
+    pub fn set_wifi_rest(&mut self, on: bool) {
+        self.wifi_rest = on;
+        self.touched_at = self.now();
     }
 
     pub fn gb_core(&self) -> Core {
@@ -11485,6 +11531,17 @@ impl App {
         {
             self.wifi_boot_blocked = true;
             self.wifi_send(crate::wifi::Cmd::PowerOff);
+        }
+        let resting = self.radio_resting();
+        if resting != self.wifi_resting {
+            self.wifi_resting = resting;
+            eprintln!(
+                "slot: wifi: {}",
+                match resting {
+                    true => "resting, the shelf has been idle",
+                    false => "awake",
+                }
+            );
         }
         if !self.wifi_wanted() {
             if !self.updating() {

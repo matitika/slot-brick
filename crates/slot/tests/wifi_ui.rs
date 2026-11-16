@@ -532,3 +532,50 @@ fn an_edit_left_behind_network_time_is_dropped() {
     a.confirm_clock();
     assert_eq!(clock.get(), CLOCK_IS_SET);
 }
+
+fn idle(a: &mut App, minutes: u64) {
+    for _ in 0..minutes * 6 {
+        let t = a.now();
+        a.tick_ms(t + 10_000);
+    }
+}
+
+#[test]
+fn the_brick_rests_the_radio_on_an_idle_shelf_and_a_press_wakes_it() {
+    let _g = serial();
+    let (_d, mut a, log) = on_shelf();
+    a.set_wifi_rest(true);
+    settle(&mut a);
+    assert!(a.wifi().held);
+    idle(&mut a, 4);
+    assert!(a.wifi().held, "four minutes is not idle enough");
+    idle(&mut a, 2);
+    assert!(!a.wifi().held, "rested after five");
+    assert_eq!(count(&log, "block"), 1, "switched off, not left idle");
+    press(&mut a, Btn::Right);
+    settle(&mut a);
+    assert!(a.wifi().held, "a press wakes it");
+    assert_eq!(count(&log, "start"), 2);
+}
+
+#[test]
+fn upstream_keeps_the_radio_on_an_idle_shelf() {
+    let _g = serial();
+    let (_d, mut a, log) = on_shelf();
+    settle(&mut a);
+    idle(&mut a, 10);
+    assert!(a.wifi().held);
+    assert_eq!(count(&log, "block"), 0);
+}
+
+#[test]
+fn the_brick_switches_the_radio_off_for_a_game() {
+    let _g = serial();
+    let (_d, mut a, log) = on_shelf();
+    a.set_wifi_rest(true);
+    settle(&mut a);
+    a.apply(Action::Insert);
+    frames(&mut a, 2);
+    assert!(!a.wifi().held);
+    assert_eq!(count(&log, "block"), 1);
+}

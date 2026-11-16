@@ -403,7 +403,7 @@ pub fn brick_model_no(pro: bool) -> &'static str {
 pub fn brick_head_rows(f: &StickerFields) -> [String; 3] {
     [
         format!("MODEL NO. {}", f.model),
-        format!("RATING : 5V{DC}2A"),
+        format!("RATING : 5V{DC}2A (10W)"),
         match f.battery {
             Some(p) => format!("BATTERY : LI-ION ({p}%)"),
             None => "BATTERY : LI-ION".to_string(),

@@ -58,10 +58,18 @@ shows from the start after next. With none chosen, slot shows its own wordmark
 ## Frames
 
 Games on the Brick are framed by SkyWalker541's TrimUI-Brick-Overlays (CC0), made for the
-Brick's 1024x768: Game Boy and Game Boy Color at Integer (5x) and Fit, Game Boy Advance at
+Brick's 1024x768: Game Boy and Game Boy Color at Integer (5x) and Fit (the SP-frame size is not offered on the Brick), Game Boy Advance at
 Integer (4x) and Fit. Each system's Bezel setting picks them as Default, or None, or a frame of your own
 in `Bezels/<system>/` (a 1024x768 PNG, see-through where the game shows); SkyWalker541's other
 colours (blue LED, Japanese, Pokémon) drop in there as they are.
+
+## Wi-Fi
+
+To save battery, the Brick switches its Wi-Fi radio fully off (link down, rfkill) whenever slot
+lets it go: during a game, in sleep, and after five minutes untouched on the shelf. The next
+press brings it back within a few seconds. Downloads, art fetches and updates keep it on until
+they finish, and screens that use the network (slot's server, Networks, RomM) are not counted
+as idle. `Logs/slot.log` notes each rest ("wifi: resting") and wake.
 
 ## Clock
 
