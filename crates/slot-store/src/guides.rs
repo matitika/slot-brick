@@ -6,9 +6,6 @@ use crate::scan::listing;
 
 pub const GUIDES_DIR: &str = "Guides";
 pub const GUIDE_SPOTS_FILE: &str = "guides.txt";
-pub const MANUALS_DIR: &str = "Manuals";
-/// What a manual can be: a folder of page images, or the same zipped (a comic-book .cbz).
-const MANUAL_ZIPS: [&str; 2] = ["cbz", "zip"];
 
 const TAB: usize = 8;
 
@@ -25,25 +22,6 @@ pub fn find_guide(root: &Path, platform: Platform, stem: &str) -> Option<PathBuf
     listing(&dir)
         .get(&format!("{stem}.txt").to_lowercase())
         .map(|name| dir.join(name))
-}
-
-/// A game's manual: Manuals/<platform>/<game name>/ holding its pages as PNG or JPEG images,
-/// or <game name>.cbz / .zip holding them, named so they sort in page order.
-pub fn find_manual(root: &Path, platform: Platform, stem: &str) -> Option<PathBuf> {
-    let dir = root.join(MANUALS_DIR).join(platform.dir_name());
-    let names = listing(&dir);
-    let stem = stem.to_lowercase();
-    if let Some(name) = names.get(&stem) {
-        let path = dir.join(name);
-        if path.is_dir() {
-            return Some(path);
-        }
-    }
-    MANUAL_ZIPS
-        .iter()
-        .find_map(|ext| names.get(&format!("{stem}.{ext}")))
-        .map(|name| dir.join(name))
-        .filter(|p| p.is_file())
 }
 
 pub fn read_guide(path: &Path) -> std::io::Result<Vec<String>> {
