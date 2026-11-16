@@ -20,6 +20,7 @@ fn cart() -> Cart {
         code: String::new(),
         shell: None,
         title: "POKEMON EMER".into(),
+        tags: Vec::new(),
     }
 }
 
@@ -32,6 +33,7 @@ fn pak() -> Cart {
         code: String::new(),
         shell: None,
         title: "TETRIS".into(),
+        tags: Vec::new(),
     }
 }
 
@@ -42,6 +44,8 @@ fn both() -> [(&'static str, Cart); 2] {
 fn label_band(c: &Cart) -> (f32, f32) {
     let (y, h) = match c.platform {
         Platform::Gba | Platform::Gbav => (LABEL_Y as f32, LABEL_H as f32),
+        #[cfg(feature = "nds")]
+        Platform::Nds => (slot_ui::DS_LABEL_Y as f32, slot_ui::DS_LABEL_H as f32),
         Platform::Gb | Platform::Gbc => (GB_LABEL_Y as f32, GB_LABEL_H as f32),
     };
     let k = seated_box(c.platform).1 as f32 / cart_box(c.platform).1 as f32;
@@ -113,9 +117,7 @@ fn alpha(d: &Draw) -> f32 {
         | Draw::Part { alpha, .. }
         | Draw::Turned { alpha, .. }
         | Draw::Quad { alpha, .. } => alpha,
-        Draw::Game | Draw::Shot { .. } | Draw::Capture | Draw::Quad { .. } | Draw::Paper { .. } => {
-            1.0
-        }
+        Draw::Game | Draw::Shot { .. } | Draw::Capture | Draw::Paper { .. } => 1.0,
     }
 }
 

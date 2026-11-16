@@ -9,6 +9,7 @@ use slot::frontend::Frontend;
 use slot_gfx::{Compositor, HeadlessSurface, OUT_H, OUT_W};
 use slot_input::{Btn, InputSource, Millis, RawEvent};
 use slot_power::SimPlatform;
+use slot_store::{read_slot_state, write_slot_state};
 use slot_ui::{quick_row_top, quick_row_top_at, quick_scroll, QuickRow, MOUTH_H, QUICK_VISIBLE};
 
 struct Script(VecDeque<Vec<RawEvent>>);
@@ -123,10 +124,10 @@ fn the_quick_menu_renders_full_screen() {
     let mut tips = Vec::new();
     for (name, selected) in [
         ("general", QuickRow::General),
-        ("screen", QuickRow::Screen),
         ("game", QuickRow::Game),
+        ("screen", QuickRow::Screen),
         ("network", QuickRow::Network),
-        ("about", QuickRow::About),
+        ("system", QuickRow::System),
     ] {
         for _ in bar_on.position(&[])..selected.position(&[]) {
             tap(&mut f, &mut input, Btn::Down);
@@ -186,7 +187,7 @@ fn the_quick_menu_renders_full_screen() {
         "the pointer moves from row to row: {tips:?}"
     );
 
-    for _ in QuickRow::General.position(&[])..QuickRow::About.position(&[]) {
+    for _ in QuickRow::General.position(&[])..QuickRow::System.position(&[]) {
         tap(&mut f, &mut input, Btn::Up);
     }
     tap(&mut f, &mut input, Btn::A);
@@ -346,7 +347,11 @@ fn the_about_label_is_on_the_tinted_wallpaper() {
     f.upload_faces(&mut c);
     let mut input = Script(VecDeque::new());
     tap(&mut f, &mut input, Btn::Menu);
-    for _ in 0..QuickRow::About.position(&[]) {
+    for _ in 0..QuickRow::System.position(&[]) {
+        tap(&mut f, &mut input, Btn::Down);
+    }
+    tap(&mut f, &mut input, Btn::A);
+    for _ in 0..QuickRow::About.position(&f.app().hidden_rows()) {
         tap(&mut f, &mut input, Btn::Down);
     }
     let menu = composed(&mut f, &mut c, "about-row");
@@ -382,10 +387,10 @@ fn the_general_page_renders() {
     tap(&mut f, &mut input, Btn::A);
     assert_eq!(f.app().quick_menu(), Some(QuickRow::Theme));
     composed(&mut f, &mut c, "general");
-    for _ in 0..QuickRow::DateTime.position(&f.app().hidden_rows()) {
+    for _ in 0..QuickRow::KidMode.position(&f.app().hidden_rows()) {
         tap(&mut f, &mut input, Btn::Down);
     }
-    assert_eq!(f.app().quick_menu(), Some(QuickRow::DateTime));
+    assert_eq!(f.app().quick_menu(), Some(QuickRow::KidMode));
     composed(&mut f, &mut c, "general-bottom");
 }
 
@@ -565,7 +570,7 @@ fn the_left_stick_row_keeps_its_label_clear_of_its_value() {
 }
 
 #[test]
-fn power_on_keeps_auto_load_state_clear_of_its_value() {
+fn resume_on_power_on_stays_clear_of_its_value() {
     let Ok(surface) = HeadlessSurface::new() else {
         return;
     };
@@ -583,19 +588,19 @@ fn power_on_keeps_auto_load_state_clear_of_its_value() {
     }
     tap(&mut f, &mut input, Btn::A);
     let hidden = f.app().hidden_rows();
-    for _ in 0..QuickRow::AutoLoad.position(&hidden) {
+    for _ in 0..QuickRow::ResumePowerOn.position(&hidden) {
         tap(&mut f, &mut input, Btn::Down);
     }
     tap(&mut f, &mut input, Btn::Right);
-    assert_eq!(f.app().quick_menu(), Some(QuickRow::AutoLoad));
+    assert_eq!(f.app().quick_menu(), Some(QuickRow::ResumePowerOn));
     assert_eq!(
-        f.app().quick_value(QuickRow::AutoLoad),
-        Some(slot_ui::QuickValue::PowerOn)
+        f.app().quick_value(QuickRow::ResumePowerOn),
+        Some(slot_ui::QuickValue::Off)
     );
-    let top = quick_row_top(slot_ui::Canvas::FRAMED, QuickRow::AutoLoad, &hidden) as usize;
+    let top = quick_row_top(slot_ui::Canvas::FRAMED, QuickRow::ResumePowerOn, &hidden) as usize;
     let px = composed(&mut f, &mut c, "power-on");
     let ink = inked(&px, 40..OUT_W as usize, top);
-    assert!(!ink.is_empty(), "the Auto Load State row drew nothing");
+    assert!(!ink.is_empty(), "the Resume on Power On row drew nothing");
     let gap = ink.windows(2).map(|w| w[1] - w[0]).max().unwrap_or(0);
     assert!(
         gap >= 24,
@@ -696,12 +701,17 @@ fn open_network(f: &mut Frontend, input: &mut Script) {
     assert_eq!(f.app().quick_menu(), Some(QuickRow::Server));
 }
 
-fn open_wifi(f: &mut Frontend, input: &mut Script) {
+fn open_system(f: &mut Frontend, input: &mut Script) {
     tap(f, input, Btn::Menu);
-    for _ in 0..QuickRow::General.position(&[]) {
+    for _ in 0..QuickRow::System.position(&[]) {
         tap(f, input, Btn::Down);
     }
     tap(f, input, Btn::A);
+    assert_eq!(f.app().quick_menu(), Some(QuickRow::Wifi));
+}
+
+fn open_wifi(f: &mut Frontend, input: &mut Script) {
+    open_system(f, input);
     for _ in 0..QuickRow::Wifi.position(&f.app().hidden_rows()) {
         tap(f, input, Btn::Down);
     }
@@ -710,7 +720,7 @@ fn open_wifi(f: &mut Frontend, input: &mut Script) {
 }
 
 fn open_check_for_updates(f: &mut Frontend, input: &mut Script) {
-    open_network(f, input);
+    open_system(f, input);
     for _ in 0..QuickRow::CheckUpdates.position(&f.app().hidden_rows()) {
         tap(f, input, Btn::Down);
     }
@@ -740,7 +750,8 @@ fn the_tools_page_renders_centred() {
         .filter(|r| !hidden.contains(r))
         .map(|row| {
             let top = quick_row_top(slot_ui::Canvas::FRAMED, row, &hidden) as usize;
-            let ink = inked(&px, 170..OUT_W as usize - 40, top);
+            let from = pointer(&px, top).map_or(170, |p| p.label_first);
+            let ink = inked(&px, from..OUT_W as usize - 40, top);
             (
                 *ink.first().expect("a row with no label"),
                 *ink.last().unwrap(),
@@ -776,8 +787,12 @@ fn the_wifi_page_renders() {
     f.upload_faces(&mut c);
     let mut input = Script(VecDeque::new());
     open_wifi(&mut f, &mut input);
-    tap(&mut f, &mut input, Btn::Down);
-    assert_eq!(f.app().quick_menu(), Some(QuickRow::Networks));
+    common::reach(
+        &mut f,
+        QuickRow::Networks,
+        |f| f.app().quick_menu(),
+        |f| tap(f, &mut input, Btn::Down),
+    );
     let px = composed(&mut f, &mut c, "network-page");
     let right = OUT_W as usize - 32;
     for row in QuickRow::WIFI {
@@ -819,13 +834,11 @@ fn the_wifi_page_renders() {
         !inked(&off, 40..360, wifi).is_empty(),
         "the Wi-Fi row moved when Wi-Fi went off"
     );
-    for row in [QuickRow::Networks] {
-        let top = quick_row_top(slot_ui::Canvas::FRAMED, row, &[]) as usize;
-        assert!(
-            inked(&off, 40..right + 4, top).is_empty(),
-            "{row:?} is still drawn with Wi-Fi off"
-        );
-    }
+    let top = quick_row_top(slot_ui::Canvas::FRAMED, QuickRow::Networks, &[]) as usize;
+    assert!(
+        inked(&off, 40..right + 4, top).is_empty(),
+        "Networks is still drawn with Wi-Fi off"
+    );
 }
 
 #[test]
@@ -844,7 +857,11 @@ fn about_shows_x_restart() {
     f.upload_faces(&mut c);
     let mut input = Script(VecDeque::new());
     tap(&mut f, &mut input, Btn::Menu);
-    for _ in 0..QuickRow::About.position(&[]) {
+    for _ in 0..QuickRow::System.position(&[]) {
+        tap(&mut f, &mut input, Btn::Down);
+    }
+    tap(&mut f, &mut input, Btn::A);
+    for _ in 0..QuickRow::About.position(&f.app().hidden_rows()) {
         tap(&mut f, &mut input, Btn::Down);
     }
     tap(&mut f, &mut input, Btn::A);
@@ -959,7 +976,7 @@ fn the_update_scene_renders_each_moment() {
     f.upload_faces(&mut c);
     let mut input = Script(VecDeque::new());
     tap(&mut f, &mut input, Btn::Menu);
-    open_network(&mut f, &mut input);
+    open_system(&mut f, &mut input);
     for _ in 0..QuickRow::CheckUpdates.position(&f.app().hidden_rows()) {
         tap(&mut f, &mut input, Btn::Down);
     }
@@ -1054,7 +1071,7 @@ fn a_cancelled_download_puts_the_carts_back_without_dropping_them() {
 }
 
 #[test]
-fn the_tools_page_stays_shut_until_connected() {
+fn the_tools_page_opens_offline_and_its_rows_ask_for_wifi() {
     let Ok(surface) = HeadlessSurface::new() else {
         return;
     };
@@ -1073,6 +1090,147 @@ fn the_tools_page_stays_shut_until_connected() {
     }
     tap(&mut f, &mut input, Btn::A);
     assert!(!f.app().wifi_up());
-    assert_eq!(f.app().quick_menu(), Some(QuickRow::Network));
+    assert!(f
+        .app()
+        .quick_menu()
+        .is_some_and(|r| r.page() == QuickRow::NETWORK));
+    assert!(!f.app().update_shown());
+    for _ in 0..QuickRow::FetchArt.position(&f.app().hidden_rows()) {
+        tap(&mut f, &mut input, Btn::Down);
+    }
+    tap(&mut f, &mut input, Btn::A);
+    assert_eq!(f.app().quick_menu(), Some(QuickRow::FetchArt));
     assert!(f.app().update_shown());
+    composed(&mut f, &mut c, "tools-offline");
+}
+
+fn footer_cols(px: &[u8]) -> Vec<usize> {
+    let top = slot_ui::FOOTER_Y as usize;
+    (0..OUT_W as usize / 2)
+        .filter(|&x| {
+            (top..top + slot_ui::HINT_H as usize).any(|y| at(px, x, y).iter().all(|c| *c > 0xc0))
+        })
+        .collect()
+}
+
+#[test]
+fn the_shelf_footer_shows_what_battery_display_asks_for() {
+    let Ok(surface) = HeadlessSurface::new() else {
+        return;
+    };
+    let Ok(mut c) = Compositor::new(&surface) else {
+        return;
+    };
+    let mut cols = Vec::new();
+    for display in slot_store::BatteryDisplay::ALL {
+        let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+        clocked(d.path());
+        let mut s = slot_store::read_slot_state(d.path());
+        s.battery_display = display;
+        slot_store::write_slot_state(d.path(), &s).expect("write slot.state");
+        let mut f = Frontend::boot(Box::new(SimPlatform::at(d.path().to_path_buf())));
+        f.upload_faces(&mut c);
+        let mut input = Script(VecDeque::new());
+        f.advance(&mut input);
+        let px = composed(&mut f, &mut c, &format!("battery-{}", display.key()));
+        cols.push(footer_cols(&px));
+    }
+    let [both, icon, percent] = [&cols[0], &cols[1], &cols[2]];
+    let gauge_x = 40;
+    let bolt: Vec<usize> = both.iter().copied().filter(|&x| x < gauge_x).collect();
+    assert!(
+        !bolt.is_empty(),
+        "the sim battery is not charging, so the bolt test is moot"
+    );
+    let capsule: Vec<usize> = icon.iter().copied().filter(|&x| x >= gauge_x).collect();
+    let number: Vec<usize> = both.iter().copied().filter(|x| !icon.contains(x)).collect();
+    assert!(!capsule.is_empty(), "Icon drew no capsule");
+    assert!(!number.is_empty(), "Both drew no number");
+    assert!(
+        icon.iter().all(|x| both.contains(x)),
+        "Icon drew something Both does not"
+    );
+    assert!(
+        capsule.last() < number.first(),
+        "the number does not sit after the capsule: {capsule:?} {number:?}"
+    );
+    let text: Vec<usize> = percent.iter().copied().filter(|&x| x >= gauge_x).collect();
+    assert_eq!(
+        percent
+            .iter()
+            .copied()
+            .filter(|&x| x < gauge_x)
+            .collect::<Vec<_>>(),
+        bolt,
+        "the bolt moved"
+    );
+    assert!(
+        text[0].abs_diff(capsule[0]) <= 1,
+        "Percentage starts at {} and the capsule at {}",
+        text[0],
+        capsule[0]
+    );
+    let span = |c: &[usize]| c[c.len() - 1] - c[0];
+    assert!(
+        span(&text).abs_diff(span(&number)) <= 1,
+        "Percentage prints {text:?}, Both printed {number:?}"
+    );
+}
+
+fn nickname_value_glow(name: &str, nickname: &str) -> u8 {
+    let Ok(surface) = HeadlessSurface::new() else {
+        return 0;
+    };
+    let Ok(mut c) = Compositor::new(&surface) else {
+        return 0;
+    };
+    let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
+    clocked(d.path());
+    if !nickname.is_empty() {
+        let mut s = read_slot_state(d.path());
+        s.nickname = nickname.to_string();
+        write_slot_state(d.path(), &s).unwrap();
+    }
+    let mut f = Frontend::boot(Box::new(SimPlatform::at(d.path().to_path_buf())));
+    common::connect(f.app_mut());
+    f.upload_faces(&mut c);
+    let mut input = Script(VecDeque::new());
+    open_system(&mut f, &mut input);
+    for _ in 0..QuickRow::About.position(&f.app().hidden_rows()) {
+        tap(&mut f, &mut input, Btn::Down);
+    }
+    assert_eq!(f.app().quick_menu(), Some(QuickRow::About));
+    let px = composed(&mut f, &mut c, name);
+    let hidden = f.app().hidden_rows();
+    let top = slot_ui::quick_row_top_at(
+        slot_ui::Canvas::FRAMED,
+        QuickRow::Nickname,
+        QuickRow::About,
+        &hidden,
+    ) as usize;
+    let mut glow = 0u8;
+    for y in top + 8..top + 44 {
+        for x in 450..OUT_W as usize - 20 {
+            let [r, g, b] = at(&px, x, y);
+            if r > 0x50 && g > 0x50 && b > 0x50 {
+                glow = glow.max(r.max(g).max(b));
+            }
+        }
+    }
+    glow
+}
+
+#[test]
+fn the_fallback_nickname_is_dimmer_than_a_stored_one() {
+    let stored = nickname_value_glow("nickname-stored", "dad");
+    let fallback = nickname_value_glow("nickname-fallback", "");
+    if stored == 0 && fallback == 0 {
+        return;
+    }
+    assert!(stored >= 0x90, "stored value glow {stored}");
+    assert!(fallback > 0, "the fallback value drew nothing");
+    assert!(
+        fallback < stored - 0x10,
+        "fallback {fallback} vs stored {stored}"
+    );
 }

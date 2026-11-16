@@ -246,6 +246,7 @@ pub fn run() {
                 "slot: pace: fixed at the panel's {:.3} ms",
                 period.as_secs_f64() * 1e3
             );
+            frontend.fix_present();
             Pacer::fixed(period)
         }
         None => Pacer::new(),
@@ -263,6 +264,8 @@ pub fn run() {
     let mut cpu = board
         .is_trimui()
         .then(|| slot::brick_power::CpuPower::open(&root));
+    let (mut repeats, mut shown_at) = (0u32, None::<Instant>);
+    let mut bottom_blank = false;
     loop {
         pacer.wait();
         let began = Instant::now();
@@ -374,13 +377,16 @@ pub fn run() {
         let bottom_began = Instant::now();
         if let Some(pass) = ds.as_ref() {
             let power = frontend.ds_frame().map(|_| frontend.screen_power());
-            let drawn = match frontend.bottom_source() {
+            let source = frontend.bottom_source();
+            let drawn = match source {
                 BottomSource::Compositor => {
                     draw_menu_below(&mut *surface, &mut frontend, &mut compositor, window)
                 }
                 BottomSource::DsScreen => draw_bottom(&mut *surface, pass, power),
+                BottomSource::Black if bottom_blank => Ok(()),
                 BottomSource::Black => draw_bottom(&mut *surface, pass, None),
             };
+            bottom_blank = source == BottomSource::Black && drawn.is_ok();
             if let Err(e) = drawn {
                 eprintln!("slot: bottom panel: {e}");
                 ds = None;
@@ -390,6 +396,13 @@ pub fn run() {
         let bottom_took = bottom_began.elapsed();
         slot::latency::swapped(swap_took.as_secs_f64() * 1000.0);
         let dropped = pacer.swapped(work, swap_took > Duration::from_millis(1));
+        if let Some(vblank) = surface.last_vblank() {
+            if let Some(prev) = shown_at.replace(vblank) {
+                repeats +=
+                    u32::from(vblank.saturating_duration_since(prev) > pacer.period().mul_f64(1.5));
+            }
+            pacer.lock_to(vblank);
+        }
         if slot::latency::tracing() {
             frames += 1;
             missed += u32::from(dropped);
@@ -423,13 +436,17 @@ pub fn run() {
                     ),
                 };
                 eprintln!(
-                    "slot: pace: 600 frames, {missed} missed a latch, {early} drawn early, {stale} stale, work {:.1} ms, period {:.2} ms, {}, {}{sound}",
+                    "slot: pace: 600 frames, {repeats} repeated on the top panel, {missed} missed a latch, {early} drawn early, {stale} stale, work {:.1} ms, period {:.2} ms, {}, panel phase {}, {}{sound}",
                     pacer.work().as_secs_f64() * 1e3,
                     pacer.period().as_secs_f64() * 1e3,
                     stages.report(),
+                    surface
+                        .flip_times_us()
+                        .map(|[top, bottom]| format!("{:.2} ms", (top as f64 - bottom as f64) / 1000.0))
+                        .unwrap_or_else(|| "n/a".into()),
                     cpu_now()
                 );
-                (frames, missed, early, stale) = (0, 0, 0, 0);
+                (frames, missed, early, stale, repeats) = (0, 0, 0, 0, 0);
                 (queued, device) = ((0.0, 0.0, 0), (0.0, 0.0, 0));
                 stages = Stages::default();
             }

@@ -9,7 +9,7 @@ use slot::networks::{
 };
 use slot::wifi::{Backend, Cmd, Fake, Wifi};
 use slot_input::{Action, Btn};
-use slot_store::{write_slot_state, SlotState};
+use slot_store::{read_slot_state, write_slot_state, SlotState};
 use slot_ui::{QuickRow, Toast};
 use tempfile::TempDir;
 
@@ -58,7 +58,7 @@ fn logged(log: &Log, line: &str) -> bool {
 
 fn open_networks(a: &mut App) {
     a.apply(Action::QuickMenu);
-    for row in [QuickRow::General, QuickRow::Wifi, QuickRow::Networks] {
+    for row in [QuickRow::System, QuickRow::Wifi, QuickRow::Networks] {
         for _ in 0..12 {
             if a.quick_menu() == Some(row) {
                 break;
@@ -712,7 +712,7 @@ fn forgetting_the_only_network_releases_the_radio_on_the_shelf() {
 }
 
 #[test]
-fn the_tools_page_opens_only_while_connected() {
+fn the_tools_page_opens_offline_and_its_rows_wait_for_wifi() {
     let _g = serial();
     let (_d, mut a, _log) = booted(Fake::demo());
     assert!(!a.wifi_up());
@@ -725,17 +725,25 @@ fn the_tools_page_opens_only_while_connected() {
         press(&mut a, Btn::Down);
     }
     press(&mut a, Btn::A);
-    assert_eq!(a.quick_menu(), Some(QuickRow::Network));
+    assert!(a
+        .quick_menu()
+        .is_some_and(|r| r.page() == QuickRow::NETWORK));
+    assert!(a.update_text().is_none());
+    while a.quick_menu() != Some(QuickRow::FetchArt) {
+        press(&mut a, Btn::Down);
+    }
+    press(&mut a, Btn::A);
     assert!(a.update_text().is_some());
+    assert!(a.fetch_art().is_none());
     press(&mut a, Btn::B);
     join(&mut a, "CoffeeShop Guest", "");
     assert!(a.wifi_up());
     press(&mut a, Btn::A);
-    assert_eq!(a.quick_menu(), Some(QuickRow::Server));
+    assert!(a.update_text().is_none());
 }
 
 #[test]
-fn losing_the_connection_moves_the_pointer_off_a_tool() {
+fn losing_the_connection_leaves_the_pointer_on_its_tool() {
     let _g = serial();
     let (_d, mut a, _log) = booted(Fake::demo());
     join(&mut a, "CoffeeShop Guest", "");
@@ -762,7 +770,7 @@ fn losing_the_connection_moves_the_pointer_off_a_tool() {
     a.wifi_send(Cmd::Disconnect);
     settle(&mut a);
     assert!(!a.wifi_up());
-    assert_eq!(a.quick_menu(), Some(QuickRow::Network));
+    assert_eq!(a.quick_menu(), Some(QuickRow::FetchArt));
 }
 
 fn open_scan(a: &mut App) {
@@ -1040,7 +1048,7 @@ fn holding_a_on_delete_keeps_deleting() {
     while a.keyboard().unwrap().row() != 0 {
         press(&mut a, Btn::Up);
     }
-    while a.keyboard().unwrap().on_delete() == false {
+    while !a.keyboard().unwrap().on_delete() {
         press(&mut a, Btn::Right);
     }
     hold(&mut a, Btn::A, 1000);
@@ -1057,4 +1065,69 @@ fn b_held_to_close_the_help_does_not_delete() {
     assert!(a.keyboard().unwrap().help());
     hold(&mut a, Btn::B, 1000);
     assert_eq!(a.keyboard().unwrap().text(), "secret99");
+}
+
+fn open_nickname(a: &mut App) {
+    a.apply(Action::QuickMenu);
+    for row in [QuickRow::System, QuickRow::Nickname] {
+        for _ in 0..12 {
+            if a.quick_menu() == Some(row) {
+                break;
+            }
+            press(a, Btn::Down);
+        }
+        assert_eq!(a.quick_menu(), Some(row), "{:?}", a.phase());
+        if row != QuickRow::Nickname {
+            press(a, Btn::A);
+        }
+    }
+    press(a, Btn::A);
+    assert_eq!(a.keyboard_for(), Some(&KeyboardFor::Nickname));
+}
+
+#[test]
+fn the_nickname_row_opens_the_keyboard_and_saves() {
+    let _g = serial();
+    let (d, mut a, _log) = booted(Fake::demo());
+    open_nickname(&mut a);
+    type_text(&mut a, "dad");
+    press(&mut a, Btn::Start);
+    assert!(a.keyboard().is_none());
+    assert_eq!(a.nickname(), "dad");
+    assert_eq!(read_slot_state(d.path()).nickname, "dad");
+}
+
+#[test]
+fn a_long_nickname_is_cut_to_29_bytes() {
+    let _g = serial();
+    let (d, mut a, _log) = booted(Fake::demo());
+    open_nickname(&mut a);
+    type_text(&mut a, &"a".repeat(40));
+    press(&mut a, Btn::Start);
+    assert_eq!(a.nickname(), "a".repeat(29));
+    assert_eq!(read_slot_state(d.path()).nickname, "a".repeat(29));
+}
+
+#[test]
+fn an_empty_nickname_falls_back_to_the_device_name() {
+    let _g = serial();
+    let (d, mut a, _log) = booted(Fake::demo());
+    assert_eq!(a.nickname(), "slot");
+    a.set_panel((720, 480));
+    assert_eq!(a.nickname(), "RG SP");
+    a.set_panel((640, 480));
+    assert_eq!(a.nickname(), "RG35XXSP");
+    a.set_panel((720, 720));
+    assert_eq!(a.nickname(), "slot");
+    a.set_panel((640, 480));
+    open_nickname(&mut a);
+    type_text(&mut a, "dad");
+    press(&mut a, Btn::Start);
+    open_nickname(&mut a);
+    for _ in 0..3 {
+        press(&mut a, Btn::B);
+    }
+    press(&mut a, Btn::Start);
+    assert_eq!(a.nickname(), "RG35XXSP");
+    assert_eq!(read_slot_state(d.path()).nickname, "");
 }

@@ -209,6 +209,70 @@ fn a_panel_sized_wallpaper_lands_pixel_for_pixel_on_a_4_by_3_panel() {
     }
 }
 
+#[test]
+fn changing_the_tint_peeks_at_the_shelf_then_darkens_the_menu() {
+    let Ok(surface) = HeadlessSurface::new() else {
+        return;
+    };
+    let Ok(mut c) = Compositor::new(&surface) else {
+        return;
+    };
+    let d = tmp_root_with_carts(&["Emerald", "Zzz"]);
+    clocked(d.path());
+    let (w, h) = (640usize, 480usize);
+    let paper: Vec<u8> = [200u8, 200, 200, 255].repeat(w * h);
+    let dir = d.path().join("Wallpapers");
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = std::fs::File::create(dir.join("grey.png")).unwrap();
+    let mut e = png::Encoder::new(std::io::BufWriter::new(file), w as u32, h as u32);
+    e.set_color(png::ColorType::Rgba);
+    e.set_depth(png::BitDepth::Eight);
+    e.write_header().unwrap().write_image_data(&paper).unwrap();
+    let state = slot_store::read_slot_state(d.path());
+    slot_store::write_slot_state(
+        d.path(),
+        &slot_store::SlotState {
+            wallpaper: slot_store::WallpaperPick::File("grey.png".into()),
+            ..state
+        },
+    )
+    .unwrap();
+    let mut f = Frontend::boot(Box::new(SimPlatform::at(d.path().to_path_buf())));
+    f.app_mut().set_panel((640, 480));
+    f.upload_faces(&mut c);
+    let mut input = Script(VecDeque::new());
+    for _ in 0..10 {
+        f.advance(&mut input);
+    }
+    c.fit((640, 480));
+    tap(&mut f, &mut input, Btn::Menu);
+    tap(&mut f, &mut input, Btn::A);
+    while f.app().quick_menu() != Some(QuickRow::WallpaperTint) {
+        tap(&mut f, &mut input, Btn::Down);
+    }
+    let mut shot = |f: &mut Frontend, input: &mut Script, name: &str| {
+        f.advance(input);
+        f.compose(&mut c);
+        let frame = c.read_frame();
+        write_png(&format!("native-menu-tint-{name}"), 640, 480, &frame);
+        frame[(60 * w + 20) * 4]
+    };
+    let menu_off = shot(&mut f, &mut input, "menu-off");
+    tap(&mut f, &mut input, Btn::Right);
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    let peek_low = shot(&mut f, &mut input, "peek-low");
+    std::thread::sleep(std::time::Duration::from_millis(1_500));
+    let menu_low = shot(&mut f, &mut input, "menu-low");
+    assert!(
+        peek_low.abs_diff(150) <= 3,
+        "the peek is not the wallpaper at 25% tint: {peek_low}"
+    );
+    assert!(
+        menu_low < menu_off,
+        "the menu did not darken: {menu_off} then {menu_low}"
+    );
+}
+
 type Paint = fn(usize, usize, usize, usize) -> [u8; 4];
 
 fn edges(x: usize, y: usize, w: usize, h: usize) -> [u8; 4] {
@@ -362,6 +426,7 @@ fn every_shortcut_row_keeps_its_label_clear_of_its_binding_on_a_4_by_3_panel() {
     };
     let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
     clocked(d.path());
+    common::plain_wallpaper(d.path());
     let mut f = Frontend::boot(Box::new(SimPlatform::at(d.path().to_path_buf())));
     f.upload_faces(&mut c);
     f.upload_bezel(&mut c, (640, 480));
@@ -378,7 +443,12 @@ fn every_shortcut_row_keeps_its_label_clear_of_its_binding_on_a_4_by_3_panel() {
         tap(&mut f, Btn::Down);
     }
     tap(&mut f, Btn::A);
-    tap(&mut f, Btn::Down);
+    common::reach(
+        &mut f,
+        QuickRow::Shortcuts,
+        |f| f.app().quick_menu(),
+        |f| tap(f, Btn::Down),
+    );
     tap(&mut f, Btn::A);
     for row in QuickRow::SHORTCUTS {
         assert_eq!(f.app().quick_menu(), Some(row));
@@ -420,6 +490,9 @@ fn link_screen_on(panel: (u32, u32)) -> Option<Vec<u8>> {
     let mut c = Compositor::new(&surface).ok()?;
     let d = common::tmp_root_with_gb_carts(&["Tetris"]);
     clocked(d.path());
+    let mut s = slot_store::read_slot_state(d.path());
+    s.gb_core = slot_store::Core::Mgba;
+    slot_store::write_slot_state(d.path(), &s).unwrap();
     let mut f = Frontend::boot(Box::new(SimPlatform::at(d.path().to_path_buf())));
     f.upload_faces(&mut c);
     f.upload_bezel(&mut c, panel);
@@ -708,6 +781,7 @@ fn the_change_legend_clears_the_cart_slot_on_a_4_by_3_panel() {
     };
     let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
     clocked(d.path());
+    common::plain_wallpaper(d.path());
     let mut f = Frontend::boot(Box::new(SimPlatform::at(d.path().to_path_buf())));
     f.upload_faces(&mut c);
     f.upload_bezel(&mut c, (640, 480));
@@ -794,6 +868,7 @@ fn long_menu_values_keep_clear_of_their_labels_on_a_4_by_3_panel() {
     };
     let d = tmp_root_with_carts(&["Emerald", "Fusion"]);
     clocked(d.path());
+    common::plain_wallpaper(d.path());
     let mut s = slot_store::read_slot_state(d.path());
     s.blending_gba = slot_store::Blending::Ghosting;
     slot_store::write_slot_state(d.path(), &s).unwrap();
@@ -814,14 +889,14 @@ fn long_menu_values_keep_clear_of_their_labels_on_a_4_by_3_panel() {
     tap(&mut f, &mut input, Btn::Menu);
     down_to(&mut f, &mut input, QuickRow::Screen);
     tap(&mut f, &mut input, Btn::A);
-    tap(&mut f, &mut input, Btn::Down);
+    down_to(&mut f, &mut input, QuickRow::ScreenGba);
     tap(&mut f, &mut input, Btn::A);
     check(&mut f, &mut c, &mut input, QuickRow::GbaBlending);
     let mut f = open(&mut c);
     tap(&mut f, &mut input, Btn::Menu);
     down_to(&mut f, &mut input, QuickRow::Controls);
     tap(&mut f, &mut input, Btn::A);
-    tap(&mut f, &mut input, Btn::Down);
+    down_to(&mut f, &mut input, QuickRow::Shortcuts);
     tap(&mut f, &mut input, Btn::A);
     check(&mut f, &mut c, &mut input, QuickRow::ScColour);
     check(&mut f, &mut c, &mut input, QuickRow::ScFastForwardToggle);

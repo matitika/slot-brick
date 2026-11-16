@@ -24,6 +24,7 @@ pub struct Session {
     root: PathBuf,
     app: App,
     emu: Option<EmuHandle>,
+    launches: u64,
     opening: Option<Opening>,
     sink: Box<dyn AudioSink>,
     gestures: Gestures,
@@ -38,6 +39,7 @@ pub struct Session {
     prefetch: Prefetch,
     reloading: bool,
     driven: bool,
+    fixed_present: bool,
     sunlight_sent: Option<u8>,
     buzz_ends: Option<Instant>,
 }
@@ -52,6 +54,7 @@ impl Session {
             app: App::boot(&root),
             root,
             emu: None,
+            launches: 0,
             opening: None,
             sink,
             gestures: Gestures::new(),
@@ -66,6 +69,7 @@ impl Session {
             prefetch: Prefetch::default(),
             reloading: false,
             driven: false,
+            fixed_present: false,
             sunlight_sent: None,
             buzz_ends: None,
         };
@@ -153,6 +157,13 @@ impl Session {
         self.emu.as_ref()
     }
 
+    pub fn set_fixed_present(&mut self, fixed: bool) {
+        self.fixed_present = fixed;
+        if let Some(emu) = &self.emu {
+            emu.set_fixed_present(fixed);
+        }
+    }
+
     pub fn set_driven(&mut self, driven: bool) {
         self.driven = driven;
         if let Some(emu) = &self.emu {
@@ -189,6 +200,10 @@ impl Session {
 
     pub fn frame_ready(&self) -> bool {
         self.emu.as_ref().is_some_and(EmuHandle::frame_ready)
+    }
+
+    pub fn launches(&self) -> u64 {
+        self.launches
     }
 
     pub fn frames_published(&self) -> u64 {
@@ -364,13 +379,6 @@ impl Session {
                 }
             }
         }
-        if let Some(blending) = self.app.take_blending() {
-            if let Some(emu) = &self.emu {
-                let (key, value) = crate::core::blend_option(self.app.core(), blending);
-                emu.set_option(key, value);
-                recoloured = true;
-            }
-        }
         if let (Some(level), Some(emu)) = (self.app.sunlight(), &self.emu) {
             if self.sunlight_sent != Some(level) {
                 emu.set_option(crate::core::SUNLIGHT_OPTION, &level.to_string());
@@ -502,6 +510,7 @@ impl Session {
             || self.app.in_game_menu().is_some()
             || self.app.repair_prompt()
             || self.app.shutting_down()
+            || self.app.invite_card().is_some()
     }
 
     fn dozing(&self) -> bool {
@@ -531,7 +540,6 @@ impl Session {
                 },
             );
             emu.set_rewinding(self.actually_rewinding());
-            emu.set_turbo(self.app.turbo());
             emu.set_rewind_recording(self.app.records_rewind());
         }
     }
@@ -588,7 +596,13 @@ impl Session {
         else {
             return;
         };
-        let core = slot_store::core_for_platform(&self.root, stem, platform, self.app.gb_core());
+        let own = slot_store::core_for_platform(&self.root, stem, platform, self.app.gb_core());
+        let core = self
+            .app
+            .link_core()
+            .filter(|c| c.runs(platform))
+            .unwrap_or(own);
+        let switched = core != own;
         launch(&format!("opening {stem} on {}", core.as_str()));
         self.app.set_core(core);
         self.app.set_platform(platform);
@@ -597,11 +611,10 @@ impl Session {
         self.app.set_link_loaded(serial);
         let root = self.root.clone();
         let stem = stem.to_owned();
-        let clean = self.app.starting_clean();
+        let clean = self.app.starting_clean() || switched;
         let player = self.app.link_player();
         let chosen = self.app.gb_colors();
         let colour = self.app.colour_correction_for(platform);
-        let blending = self.app.blending_for(platform);
         let join = std::thread::Builder::new()
             .name("slot-open".into())
             .spawn(move || {
@@ -611,9 +624,7 @@ impl Session {
                 };
                 launch("resume state read");
                 let palette = crate::core::palette_for(chosen, platform, &rom, player);
-                let mut opened = open_core(
-                    &root, core, platform, serial, colour, blending, palette, player,
-                );
+                let mut opened = open_core(&root, core, platform, serial, colour, palette, player);
                 crate::core::apply_game_boy_player(&mut *opened.core, core, platform, &rom);
                 launch("core opened");
                 let sav = persist::read_sav(&root, platform, &stem);
@@ -626,6 +637,7 @@ impl Session {
                     palette_live: palette.is_some(),
                     sav,
                     resume,
+                    switched,
                 }
             })
             .ok();
@@ -663,14 +675,16 @@ impl Session {
         if sav_unread {
             emu.refuse_save_ram();
         }
-        if resume_unread {
+        if resume_unread || loaded.switched {
             emu.refuse_resume();
         }
-        self.app.set_resume_unread(resume_unread);
+        self.app.set_resume_unread(resume_unread || loaded.switched);
         emu.set_volume(self.app.output_volume());
         emu.set_driven(self.driven);
+        emu.set_fixed_present(self.fixed_present);
         self.app.set_snapshot(Box::new(emu.snapshot()));
         self.emu = Some(emu);
+        self.launches += 1;
         self.sunlight_sent = None;
         true
     }
@@ -716,6 +730,7 @@ struct Loaded {
     palette_live: bool,
     sav: std::io::Result<Option<Vec<u8>>>,
     resume: std::io::Result<Option<Vec<u8>>>,
+    switched: bool,
 }
 
 struct Opening {

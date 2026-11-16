@@ -1,5 +1,5 @@
+use crate::battery::Gauge;
 use slot_gfx::{Canvas, Draw, TexId};
-use slot_power::Battery;
 use slot_store::{parse_stamp, StateEntry};
 
 use crate::art;
@@ -130,23 +130,15 @@ impl Polaroids {
         self.index = (self.index + 1).min(self.entries.len().saturating_sub(1));
     }
 
-    pub fn draw(
-        &self,
-        battery: Option<Battery>,
-        battery_percent: Printed,
-        bolt: Option<TexId>,
-        clock: Printed,
-        out: &mut Vec<Draw>,
-    ) {
+    pub fn draw(&self, gauge: Gauge, bolt: Option<TexId>, clock: Printed, out: &mut Vec<Draw>) {
         self.draw_photo(Canvas::FRAMED, out);
-        self.draw_chrome(Canvas::FRAMED, battery, battery_percent, bolt, clock, out);
+        self.draw_chrome(Canvas::FRAMED, gauge, bolt, clock, out);
     }
 
     pub fn draw_chrome(
         &self,
         canvas: Canvas,
-        battery: Option<Battery>,
-        battery_percent: Printed,
+        gauge: Gauge,
         bolt: Option<TexId>,
         clock: Printed,
         out: &mut Vec<Draw>,
@@ -161,8 +153,7 @@ impl Polaroids {
                 ways_out: WAYS_OUT,
                 dots: Some(self.dots()),
             },
-            battery,
-            battery_percent,
+            gauge,
             bolt,
             clock,
             out,
@@ -233,8 +224,7 @@ pub struct AlbumChrome<'a> {
 pub fn draw_album_chrome(
     canvas: Canvas,
     chrome: AlbumChrome,
-    battery: Option<Battery>,
-    battery_percent: Printed,
+    gauge: Gauge,
     bolt: Option<TexId>,
     clock: Printed,
     out: &mut Vec<Draw>,
@@ -250,7 +240,7 @@ pub fn draw_album_chrome(
             alpha: 1.0,
         });
     }
-    draw_corners(canvas, battery, battery_percent, bolt, clock, out);
+    draw_corners(canvas, gauge, bolt, clock, out);
 
     let top = canvas.h - PLATE_H;
     out.push(plate(canvas, top));

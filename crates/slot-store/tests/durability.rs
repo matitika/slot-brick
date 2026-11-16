@@ -2,8 +2,8 @@ mod common;
 
 use common::tmp_root;
 use slot_store::{
-    atomic_write, read_slot_state, sweep_temps, write_slot_state, Appearance, AutoLoad, BezelPick,
-    Blending, Core, GbPalette, Platform, Recent, Scale, Shader, SlotState, Stretch, WallpaperPick,
+    atomic_write, read_slot_state, sweep_temps, write_slot_state, Appearance, BezelPick, Blending,
+    Core, GbPalette, Platform, Recent, Scale, Shader, SlotState, Stretch, WallpaperPick,
     WallpaperTint, Zone, FF_SPEEDS, FF_SPEED_DEFAULT,
 };
 use tempfile::tempdir;
@@ -249,9 +249,8 @@ fn a_card_from_before_the_settings_keeps_all_its_values() {
             shader_gba: Shader::Grid,
             shader_gb: Shader::Simpletex,
             shader_gbc: Shader::Simpletex,
-            auto_load: AutoLoad::Always,
-            eject_save: true,
-            turbo: true,
+            resume_insert: true,
+            resume_power_on: true,
             rewind: true,
             gb_palettes: false,
             gb_palette: GbPalette::DEFAULT,
@@ -263,6 +262,7 @@ fn a_card_from_before_the_settings_keeps_all_its_values() {
             left_stick_dpad: true,
             lid_off_min: None,
             wifi_off: false,
+            nickname: String::new(),
             network_time: false,
             bezel_gba: BezelPick::Ags102,
             bezel_gb: BezelPick::Ags102,
@@ -280,6 +280,7 @@ fn a_card_from_before_the_settings_keeps_all_its_values() {
             favorites: Vec::new(),
             shelf: None,
             shelf_cart: None,
+            ..SlotState::default()
         }
     );
 }
@@ -296,9 +297,8 @@ fn the_quick_menu_settings_round_trip_as_their_own_lines() {
         colour_correction_gb: false,
         shader_gba: Shader::Dot,
         shader_gb: Shader::Off,
-        auto_load: AutoLoad::PowerOn,
-        eject_save: false,
-        turbo: false,
+        resume_insert: false,
+        resume_power_on: true,
         rewind: false,
         gb_palettes: true,
         gb_palette: GbPalette::parse("GBC Dark Green →A").unwrap(),
@@ -330,9 +330,8 @@ fn the_quick_menu_settings_round_trip_as_their_own_lines() {
         "colour_correction_gb=0",
         "shader_gba=dot",
         "shader_gb=off",
-        "auto_load=power",
-        "eject_save=0",
-        "turbo=0",
+        "resume_insert=0",
+        "resume_power_on=1",
         "rewind=0",
         "gb_palettes=1",
         "gb_palette=GBC Dark Green →A",
@@ -507,6 +506,17 @@ fn an_empty_slot_writes_an_empty_platform() {
     assert_eq!(read_slot_state(d.path()).cart_platform, None);
 }
 
+fn ds_build() -> Option<Platform> {
+    #[cfg(feature = "nds")]
+    {
+        Some(Platform::Nds)
+    }
+    #[cfg(not(feature = "nds"))]
+    {
+        None
+    }
+}
+
 #[test]
 fn an_unreadable_platform_reads_as_a_card_that_never_said() {
     let d = tmp_root();
@@ -516,7 +526,7 @@ fn an_unreadable_platform_reads_as_a_card_that_never_said() {
         ("cart_platform=nes\n", None),
         ("cart_platform=gameboy\n", None),
         ("cart_platform=0\n", None),
-        ("cart_platform=nds\n", None),
+        ("cart_platform=nds\n", ds_build()),
         ("cart_platform=GBA\n", Some(Platform::Gba)),
         ("cart_platform=Gbc\n", Some(Platform::Gbc)),
     ] {
@@ -734,5 +744,27 @@ fn a_frame_blending_the_rows_do_not_offer_reads_as_off() {
     assert!(
         read.clock_set,
         "the rest of the card was thrown away with it"
+    );
+}
+
+#[test]
+fn only_a_card_that_turned_turbo_off_reads_as_turbo_off() {
+    let d = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(d.path().join("Config")).unwrap();
+    assert!(!slot_store::legacy_turbo_off(d.path()));
+    for (text, off) in [
+        ("rewind=1\nturbo=0\n", true),
+        ("turbo=1\n", false),
+        ("rewind=0\n", false),
+        ("turbo=nope\n", false),
+    ] {
+        std::fs::write(d.path().join("Config/slot.state"), text).unwrap();
+        assert_eq!(slot_store::legacy_turbo_off(d.path()), off, "{text:?}");
+    }
+    write_slot_state(d.path(), &read_slot_state(d.path())).unwrap();
+    let text = std::fs::read_to_string(d.path().join("Config/slot.state")).unwrap();
+    assert!(
+        !text.contains("turbo="),
+        "slot.state still writes the turbo switch"
     );
 }

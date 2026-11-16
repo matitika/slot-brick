@@ -44,11 +44,14 @@ Keep all three options lowercase. A line slot can't read is skipped.
 
 ## Wallpapers
 
-Drop a `.png` into `Wallpapers/` and pick it under Wallpaper in Settings → General.
+Drop a `.png` into `Wallpapers/` and pick it under Wallpaper in Settings → Shelf.
 
-Random picks one at boot.
+slot puts its own wallpaper in the folder as `Slot.png`, with a blurred version as `Slot Blur.png`. They're
+normal files: delete them and they stay gone. None leaves the shelf on a plain background.
 
-Shelf changes the wallpaper as you move between shelves. Name a file after each shelf:
+Random picks one of your own wallpapers at boot. With none in `Wallpapers/`, the shelf stays plain.
+
+Per Shelf changes the wallpaper as you move between shelves. Name a file after each shelf:
 
 | Shelf                  | File                            |
 |------------------------|---------------------------------|
@@ -60,7 +63,10 @@ Shelf changes the wallpaper as you move between shelves. Name a file after each 
 | Recents                | `Recents.png`                   |
 | All Games (Kid Mode)   | `ALL.png`                       |
 
-A shelf without a file shows the default wallpaper.
+A shelf or collection without a file shows `Default.png`, or a plain background if there isn't one.
+
+To give a [collection](collections.md) its own wallpaper, put a `.png` named after it in `Wallpapers/Collections/`,
+like `Wallpapers/Collections/Puzzlers.png`. It shows behind that collection whatever your Wallpaper setting is.
 
 | Device                                      | Suggested Size |
 |---------------------------------------------|----------------|
@@ -105,6 +111,21 @@ Make your bezel the same size as your screen. slot scales any other size to fill
 |---------------|-------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------|
 | 640×480 (4:3) | [SP Screen](../assets/bezels/640x480-gb-spscreen.png), [Integer](../assets/bezels/640x480-gb-integer.png), [Fit](../assets/bezels/640x480-gb-fit.png) | [Integer](../assets/bezels/640x480-gba-integer.png), [Fit](../assets/bezels/640x480-gba-fit.png) |
 | 720×480 (3:2) | [Integer](../assets/bezels/720x480-gb-integer.png), [Fit](../assets/bezels/720x480-gb-fit.png)                                                        | None                                                                                             |
+
+## Overlays
+
+An overlay is a translucent image drawn over the game, under the bezel. Use one for a pixel grid or a screen texture
+when a shader isn't quite what you want.
+
+Drop a `.png` into `Overlays/GBA/`, `Overlays/GBC/` or `Overlays/GB/` and pick it in the Overlay row of the
+`Settings → Screen` menu for the system. The row only shows up when the folder has an overlay that fits your screen.
+
+| Filename         | Does                                                                         |
+|------------------|------------------------------------------------------------------------------|
+| `name_tile.png`  | Repeats across the game from its top-left corner, one image pixel per screen pixel |
+| `name.png`       | Covers the whole screen. It must be exactly your screen's size               |
+
+A tile is never scaled, so make it for your device. e.g. at 3x, a 3×3 tile lines up with every game pixel.
 
 ## Boot logo
 

@@ -33,3 +33,4 @@
 /dist-trimui-os
 /dist-os
 /.docker-cache
+/target-check

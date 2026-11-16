@@ -37,6 +37,7 @@ mod silhouette;
 mod slot_chrome;
 #[cfg(feature = "nds")]
 pub use box_screen::BoxScreen;
+pub mod hand;
 pub mod house_label;
 pub mod hue;
 pub mod liner;
@@ -50,10 +51,10 @@ pub use art::decode as decode_png;
 pub use backdrop::{
     bezel_face, blur_background, blur_background_at, default_background, default_background_at,
     default_game_bezel_face, draw_backdrop, draw_ground, game_bezel_face, reference_ground_covers,
-    wallpaper_face, BezelArt,
+    wallpaper_face, BezelArt, SLOT_BLUR_WALLPAPER_PNG, SLOT_WALLPAPER_PNG,
 };
 pub use barcode::{code39, CODE39_NARROW, CODE39_WIDE};
-pub use battery::{draw_gauge, BOLT_PX, GAUGE_H, GAUGE_W, WALL};
+pub use battery::{draw_gauge, Gauge, BOLT_PX, GAUGE_H, GAUGE_W, WALL};
 #[cfg(feature = "nds")]
 pub use bitmaps::{
     ds_slot_back, ds_slot_back_light, ds_slot_front, ds_slot_front_light, DS_CART_H, DS_CART_W,
@@ -71,11 +72,11 @@ pub use board::{
 };
 pub use cart::{
     bare_face, cart_backing, cart_box, cart_face, cart_face_with, cart_interior, cart_shadow,
-    clean_label, folder_gb_shell, gb_cart_shadow, gb_shell_of, is_clear, label_colour, label_panel,
-    label_size, label_tags, label_text, neutral_shell, seated_box, shelf_shape, shows_interior,
-    text_label, CartFace, CART_H, CART_W, GBC_LABEL_H, GBC_LABEL_W, GBC_LABEL_X, GBC_LABEL_Y,
-    GB_CART_H, GB_CART_W, GB_LABEL_H, GB_LABEL_W, GB_LABEL_X, GB_LABEL_Y, LABEL_H, LABEL_W,
-    LABEL_WELL, LABEL_X, LABEL_Y,
+    clean_label, folder_gb_shell, gb_cart_shadow, gb_shell_of, hand_reveal, is_clear, label_colour,
+    label_panel, label_size, label_tags, label_text, neutral_shell, seated_box, shelf_shape,
+    shows_interior, text_label, writes_by_hand, CartFace, HandReveal, CART_H, CART_W, GBC_LABEL_H,
+    GBC_LABEL_W, GBC_LABEL_X, GBC_LABEL_Y, GB_CART_H, GB_CART_W, GB_LABEL_H, GB_LABEL_W,
+    GB_LABEL_X, GB_LABEL_Y, LABEL_H, LABEL_W, LABEL_WELL, LABEL_X, LABEL_Y,
 };
 #[cfg(feature = "nds")]
 pub use cart::{DS_LABEL_H, DS_LABEL_W, DS_LABEL_X, DS_LABEL_Y};
@@ -87,8 +88,8 @@ pub use clock::{
 pub use draw::{Canvas, Draw, TexId, OUT_H, OUT_W};
 pub use edit_text::{heading_text_face, stack_name_face};
 pub use footer::{
-    draw_corners, draw_footer, draw_kid_icon, draw_wifi_icon, footer_y, Printed, FOOTER_Y,
-    KID_ICON_PX,
+    draw_corners, draw_footer, draw_kid_icon, draw_wifi_icon, footer_y, kid_icon_by_clock, Printed,
+    FOOTER_Y, KID_ICON_PX,
 };
 pub use guide::{
     cell, fitting_zoom, guide_help_face, mono_font, page_box, Guide, GuideGlyphs, GuideView,
@@ -128,10 +129,11 @@ pub use quick_menu::{
     add_legend, clock_legend_faces, core_button_legends, delete_legends, draw_menu_ground,
     fetch_choice_legends, fetch_legends, fetch_skip_legend, link_button_legends,
     picking_legend_faces, print_stop_legend, prompt_legends, quick_description_face,
-    quick_label_face, quick_legend_faces, quick_pointer_face, quick_row_top, quick_row_top_at,
-    quick_scroll, quick_value_face, quick_warning_value_face, quick_window, repair_legends,
-    studio_legend, update_legends, visible_rows, QuickMenu, QuickMenuFaces, QuickRow, QuickScroll,
-    QuickValue, StudioGlyph, QUICK_EDGE, QUICK_LABEL_X, QUICK_PITCH, QUICK_VISIBLE,
+    quick_label_face, quick_legend_faces, quick_placeholder_face, quick_pointer_face,
+    quick_row_top, quick_row_top_at, quick_scroll, quick_value_face, quick_warning_value_face,
+    quick_window, repair_legends, small_prompt_legends, studio_legend, update_legends,
+    visible_rows, MenuGround, QuickMenu, QuickMenuFaces, QuickRow, QuickScroll, QuickValue,
+    StudioGlyph, QUICK_EDGE, QUICK_LABEL_X, QUICK_PITCH, QUICK_VISIBLE,
 };
 pub use rebuild::{headline_face, rebuild_count_face, rebuild_title_face, RebuildScreen};
 pub use receipt::{receipt_blank, receipt_face, ReceiptText};

@@ -10,6 +10,7 @@ mod draw;
 mod ds;
 mod fbdev;
 mod fbo;
+mod ghost;
 mod gl;
 mod grade;
 #[cfg(target_os = "macos")]
@@ -37,6 +38,7 @@ pub use ds::{
 };
 pub use fbdev::{egl_error, panel_mode, panel_size, FbdevSurface};
 pub use fbo::{canvas_size, Compositor, BACKDROP};
+pub use ghost::{FrameBlend, Lcd};
 pub use grade::{
     blue_light_gain, contrast_boost, dim_gain, saturation_boost, ColorGrade, BLUE_LIGHT_MAX,
     CONTRAST_MAX, SATURATION_MAX,
@@ -47,7 +49,8 @@ pub use headless::HeadlessSurface;
 pub use host::HostSurface;
 #[cfg(unix)]
 pub use kms::{
-    free_crtc, preferred_mode, retry_until, KmsSurface, Panel, CONNECTOR_DSI, MODE_TYPE_PREFERRED,
+    free_crtc, preferred_mode, retry_until, FlipQueue, FlipStep, KmsSurface, Panel, CONNECTOR_DSI,
+    MODE_TYPE_PREFERRED,
 };
 #[cfg(unix)]
 pub use kms_atomic::{atomic_plan, primary_plane_for, AtomicIds, PlaneInfo, PLANE_TYPE_PRIMARY};

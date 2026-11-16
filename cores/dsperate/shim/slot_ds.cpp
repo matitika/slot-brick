@@ -1,11 +1,19 @@
 #include "slot_ds.h"
 
+#include "core/host_cores.h"
 #include "core/input/input_log.h"
 #include "core/nds.h"
 #include "core/state/state.h"
 #include "blip_buf/blip_buf.h"
 #if DSPERATE_JIT
 #include "core/cpu/jit/jit.h"
+#endif
+
+#if defined(__linux__)
+#include <dirent.h>
+#include <sched.h>
+#include <sys/syscall.h>
+#include <unistd.h>
 #endif
 
 #include <cstdio>
@@ -23,9 +31,12 @@ struct slot_ds {
   std::vector<uint32_t> screens = std::vector<uint32_t>(SLOT_DS_W * SLOT_DS_H, 0xFF000000u);
   std::vector<ds::u8> state;
   bool jit = false;
+  bool gpu3d = false;
   blip_t* left = blip_new(SLOT_DS_BLIP_SIZE);
   blip_t* right = blip_new(SLOT_DS_BLIP_SIZE);
   ds::s16 last[2] = {0, 0};
+  long emu_tid = 0;
+  uint64_t frames = 0, placed_at = 0;
   ~slot_ds() {
     blip_delete(left);
     blip_delete(right);
@@ -79,7 +90,46 @@ bool boot(slot_ds* ds) {
 #if DSPERATE_JIT
   if (!ds->jit) ds->jit = ds::jit::attach(ds->nds, true, true);
 #endif
+  if (ds->gpu3d) {
+    std::string why;
+    ds->nds.gpu3d.renderer().set_aa(false);
+    if (!ds->nds.gpu3d.renderer().set_gpu(true, &why)) {
+      std::fprintf(stderr, "slot_ds: gpu3d unavailable (%s), drawing on the CPU\n", why.c_str());
+      ds->gpu3d = false;
+    } else {
+      std::fprintf(stderr, "slot_ds: gpu3d on\n");
+    }
+  }
   return true;
+}
+
+void unpin_all() {
+#if defined(__linux__)
+  cpu_set_t all;
+  CPU_ZERO(&all);
+  for (long c = 0, n = sysconf(_SC_NPROCESSORS_CONF); c < n && c < CPU_SETSIZE; ++c) CPU_SET(c, &all);
+  DIR* d = opendir("/proc/self/task");
+  if (!d) return;
+  while (dirent* e = readdir(d))
+    if (e->d_name[0] >= '0' && e->d_name[0] <= '9') sched_setaffinity(static_cast<pid_t>(std::atol(e->d_name)), sizeof all, &all);
+  closedir(d);
+#endif
+}
+
+void place_threads(slot_ds* ds) {
+#if defined(__linux__)
+  const long tid = static_cast<long>(syscall(SYS_gettid));
+#else
+  const long tid = 1;
+#endif
+  if (tid != ds->emu_tid) {
+    ds->emu_tid = tid;
+    ds->placed_at = ds->frames;
+    ds::place_current_thread(ds::ThreadRole::Emu);
+    ds::place_foreign_threads();
+  } else if (ds->frames - ds->placed_at == 120) {
+    ds::place_foreign_threads();
+  }
 }
 
 void copy_screens(slot_ds* ds) {
@@ -96,10 +146,12 @@ double slot_ds_fps(void) { return 59.8261; }
 double slot_ds_sample_rate(void) { return SLOT_DS_OUTPUT_HZ; }
 
 slot_ds* slot_ds_open(const char* bios_dir) {
+  ds::set_thread_layout(true);
   slot_ds* ds = new slot_ds;
   std::string dir = bios_dir ? bios_dir : "";
   std::string b9 = dir + "/bios9.bin", b7 = dir + "/bios7.bin", fw = dir + "/firmware.bin";
   const bool real = !dir.empty() && exists(b9) && exists(b7) && exists(fw);
+  ds->gpu3d = !dir.empty() && exists(dir + "/../System/ds-gpu3d.on");
   std::string err;
   if (!ds->nds.load_bios(real ? b9 : "", real ? b7 : "", real ? fw : "", {}, &err)) {
     std::fprintf(stderr, "slot_ds: bios: %s\n", err.c_str());
@@ -130,6 +182,8 @@ void slot_ds_run_frame(slot_ds* ds, uint16_t buttons, uint8_t touch_x, uint8_t t
   f.down = touch_down != 0;
   f.lid = lid_shut != 0;
   ds::input::apply(ds->nds, f);
+  place_threads(ds);
+  ++ds->frames;
   ds->nds.run_frame();
   copy_screens(ds);
 }
@@ -198,6 +252,8 @@ void slot_ds_close(slot_ds* ds) {
   if (ds->jit) ds::jit::detach(ds->nds);
 #endif
   delete ds;
+  ds::set_thread_layout(false);
+  unpin_all();
 }
 
 }
