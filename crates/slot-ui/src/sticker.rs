@@ -372,8 +372,8 @@ pub fn sticker_face(f: &StickerFields) -> UndoFace {
     }
 }
 
-/// The Brick's About sticker, after the label on the back of the Game Boy the Brick is shaped
-/// like: a black label with an inset rule, a white serial sticker, the maker's name in type.
+/// The Brick's About sticker: the SP sticker's worn stock and serial panel made a plain
+/// rectangle, like a label on the Brick's back, with the maker's name in type.
 pub const BRICK_CREDITS: [&str; 12] = [
     "THE EXQUISITE SKEUOMORPHIC",
     "ARTWORK MADE BY MARKUS.",
@@ -389,9 +389,6 @@ pub const BRICK_CREDITS: [&str; 12] = [
     "SOUNDS: A CHILDHOOD GAMEBOY.",
 ];
 
-const BRICK_RADIUS: f32 = 16.0;
-const BRICK_RULE: [u8; 3] = [0x8a, 0x86, 0x87];
-const PAPER: [u8; 3] = [0xf4, 0xf2, 0xee];
 const WORDMARK_PX: f32 = 25.0;
 const WORDMARK_TRACKING: f32 = 3.0;
 
@@ -444,79 +441,14 @@ fn brick_wordmark(pro: bool) -> &'static str {
     }
 }
 
-/// How much of the pixel at (x, y) lies inside the rounded rectangle, 0 to 1.
-fn rounded(x: u32, y: u32, (rx, ry, rw, rh): (f32, f32, f32, f32), r: f32) -> f32 {
-    let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
-    let cx = px.clamp(rx + r, rx + rw - r);
-    let cy = py.clamp(ry + r, ry + rh - r);
-    let (dx, dy) = (px - cx, py - cy);
-    let inside_box = px >= rx && px <= rx + rw && py >= ry && py <= ry + rh;
-    if !inside_box {
-        return 0.0;
-    }
-    (r - (dx * dx + dy * dy).sqrt() + 0.5).clamp(0.0, 1.0)
-}
-
-/// A few grey levels of grain, the same every time, so the label reads as printed stock.
-fn grain(x: u32, y: u32) -> i32 {
-    let mut h = x.wrapping_mul(374_761_393) ^ y.wrapping_mul(668_265_263);
-    h = (h ^ (h >> 13)).wrapping_mul(1_274_126_177);
-    (h >> 28) as i32 - 8
-}
-
-impl Canvas {
-    /// Fills a rounded rectangle, with grain, blending its anti-aliased edge.
-    fn fill_rounded(&mut self, rect: (f32, f32, f32, f32), r: f32, c: [u8; 3], grainy: i32) {
-        for y in 0..self.h {
-            for x in 0..self.w {
-                let cover = rounded(x, y, rect, r);
-                if cover <= 0.0 {
-                    continue;
-                }
-                let g = grain(x, y) * grainy / 8;
-                let at = ((y * self.w + x) * 4) as usize;
-                let under_a = self.px[at + 3] as f32 / 255.0;
-                for (k, &ink) in c.iter().enumerate() {
-                    let ink = (ink as i32 + g).clamp(0, 255) as f32;
-                    let under = self.px[at + k] as f32;
-                    self.px[at + k] = (ink * cover + under * (1.0 - cover)).round() as u8;
-                }
-                self.px[at + 3] = ((cover + under_a * (1.0 - cover)) * 255.0).round() as u8;
-            }
-        }
-    }
-
-    /// A rounded rule `t` wide just inside `rect`.
-    fn rule_rounded(&mut self, rect: (f32, f32, f32, f32), r: f32, t: f32, c: [u8; 3]) {
-        let (rx, ry, rw, rh) = rect;
-        let inner = (rx + t, ry + t, rw - 2.0 * t, rh - 2.0 * t);
-        for y in 0..self.h {
-            for x in 0..self.w {
-                let cover = rounded(x, y, rect, r) - rounded(x, y, inner, (r - t).max(0.0));
-                if cover <= 0.0 {
-                    continue;
-                }
-                let at = ((y * self.w + x) * 4) as usize;
-                for (k, &ink) in c.iter().enumerate() {
-                    let under = self.px[at + k] as f32;
-                    self.px[at + k] = (ink as f32 * cover + under * (1.0 - cover)).round() as u8;
-                }
-            }
-        }
-    }
-}
-
 pub fn brick_sticker_face(f: &StickerFields, pro: bool) -> UndoFace {
     let (w, h) = (STICKER_W, STICKER_H);
-    let mut c = Canvas::blank(w, h);
-    let label = (0.0, 0.0, w as f32, h as f32);
-    c.fill_rounded(label, BRICK_RADIUS, BLACK, 3);
-    c.rule_rounded(
-        (6.0, 6.0, w as f32 - 12.0, h as f32 - 12.0),
-        BRICK_RADIUS - 5.0,
-        1.5,
-        BRICK_RULE,
-    );
+    // upstream's worn stock and smudged serial panel, as a plain rectangle
+    let mut c = Canvas {
+        px: bitmaps::brick_sticker().to_vec(),
+        w,
+        h,
+    };
 
     let left = MARGIN + 6.0;
     let mut y = MARGIN + 4.0;
@@ -537,9 +469,11 @@ pub fn brick_sticker_face(f: &StickerFields, pro: bool) -> UndoFace {
         y = c.print(left, y, line, BODY_PX, WHITE);
     }
 
-    // the serial sticker, white paper stuck on the label
-    let (panel_x, panel_y, panel_w, panel_h) = (232.0, 18.0, 410.0, 112.0);
-    c.fill_rounded((panel_x, panel_y, panel_w, panel_h), 6.0, PAPER, 2);
+    let (panel_x, panel_y, panel_w) = (
+        (PANEL_FX * w as f32).round(),
+        (PANEL_FY * h as f32).round(),
+        (PANEL_FW * w as f32).round(),
+    );
     let bars_y = panel_y as u32 + 10;
     let bars_h = 58;
     c.barcode(

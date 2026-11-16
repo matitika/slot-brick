@@ -62,6 +62,8 @@ const PLUG_HOST_PNG: &[u8] = include_bytes!("../../../assets/link_plug_host.png"
 const PLUG_JOIN_PNG: &[u8] = include_bytes!("../../../assets/link_plug_join.png");
 const ADAPTER_PNG: &[u8] = include_bytes!("../../../assets/link_adapter.png");
 const STICKER_PNG: &[u8] = include_bytes!("../../../assets/sticker.png");
+// the same stock, its notch filled and worn further (tools/brick_sticker.py)
+const BRICK_STICKER_PNG: &[u8] = include_bytes!("../../../assets/sticker_brick.png");
 
 fn load(bytes: &'static [u8], w: u32, h: u32, slot: &'static OnceLock<Vec<u8>>) -> &'static [u8] {
     slot.get_or_init(|| {
@@ -320,6 +322,11 @@ pub fn link_adapter() -> &'static [u8] {
 pub fn sticker() -> &'static [u8] {
     static P: OnceLock<Vec<u8>> = OnceLock::new();
     load(STICKER_PNG, STICKER_W, STICKER_H, &P)
+}
+
+pub fn brick_sticker() -> &'static [u8] {
+    static P: OnceLock<Vec<u8>> = OnceLock::new();
+    load(BRICK_STICKER_PNG, STICKER_W, STICKER_H, &P)
 }
 
 // Shells are hand drawn. There is no Game Boy clear file yet, so a clear Game Boy pak uses
