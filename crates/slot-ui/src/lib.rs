@@ -1,4 +1,5 @@
 mod art;
+mod manual_page;
 pub use art::{cover, cover_bytes, decode_png_bytes};
 mod bitmaps;
 pub use bitmaps::{
@@ -110,6 +111,7 @@ pub use link_art::{
     ARROW_LEFT_X, ARROW_RIGHT_X, ARROW_W, ARROW_Y, CLICKS_H, CLICKS_W, CLICKS_X, CLICKS_Y, PLUG_H,
     PLUG_TIP_X, PLUG_W, PORT_H, PORT_W, PORT_Y,
 };
+pub use manual_page::{resize, ManualPage, Turn, MANUAL_FIT_WIDTH, MANUAL_ZOOMS};
 pub use network_menu::{
     bars_rect, lock_rect, net_bars_face, net_lock_face, net_row_top, net_window, pair_face,
     pair_text_width, wifi_face, NetFace, NetIcons, NetLine, NetworkList, PairScreen, PairSlot,

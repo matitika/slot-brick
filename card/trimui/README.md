@@ -61,6 +61,23 @@ With Settings' network time on, slot sets the clock from an internet time server
 once Wi-Fi is up, then every six hours: neither Slot OS nor TrimUI's system has a time service
 of its own.
 
+## Manuals
+
+A game's manual opens from the in-game menu's Guide row (or the guide shortcut), like a text
+guide. Put its scanned pages, PNG or JPEG, in a folder named exactly like the game, or zip them
+into a `.cbz` (or `.zip`) of that name:
+
+```
+Manuals/GB/Tetris (World) (Rev 1)/page01.jpg, page02.jpg, …
+Manuals/GBA/Golden Sun (USA, Europe).cbz
+```
+
+Pages go in name order, page2 before page10. The manual opens fit to the screen's width; A and
+B zoom (whole page, width, 1.5x, 2x), Up and Down scroll and carry on to the next or previous
+page, Left and Right turn pages (or pan once zoomed in), L1 and R1 turn pages. It comes back at
+the same page and zoom. A game with both a text guide and a manual opens the guide first, and
+Select switches between them.
+
 ## Updates
 
 Settings → System → Check for Updates downloads the newest Brick build over Wi-Fi, on stock

@@ -941,6 +941,8 @@ pub struct App {
     delete_shot_text: Option<[(TexId, u32, u32); 2]>,
     has_guide: bool,
     guide: Option<(Guide, PathBuf)>,
+    /// the open guide's pages, when it is a manual
+    manual: Option<crate::manual::Manual>,
     guide_hint_faces: Vec<TexId>,
     guide_help_face: Option<((TexId, u32, u32), TexId)>,
 }
@@ -1163,6 +1165,7 @@ impl App {
             shot_hint_faces: Vec::new(),
             has_guide: false,
             guide: None,
+            manual: None,
             guide_hint_faces: Vec::new(),
             guide_help_face: None,
             shot_opens: 0,
@@ -2785,7 +2788,7 @@ impl App {
         self.has_states = !self.entries().is_empty();
         let removing = self.shot_writer.removing();
         self.has_shots = self.shot_dir().is_some_and(|s| s.any(&removing));
-        self.has_guide = self.guide_file().is_some();
+        self.has_guide = self.guide_file().is_some() || self.manual_file().is_some();
     }
 
     fn list_shots_later(&mut self) {
@@ -15655,39 +15658,109 @@ impl App {
         slot_store::find_guide(root, cart.platform, &cart.stem)
     }
 
-    fn open_guide(&mut self) {
-        if self.link_active() {
-            return self.refuse();
-        }
-        let (Some(root), Some(path)) = (self.root.clone(), self.guide_file()) else {
-            self.has_guide = false;
-            return self.refuse();
+    fn manual_file(&self) -> Option<PathBuf> {
+        let (Some(root), Some(cart)) = (&self.root, self.seated_cart()) else {
+            return None;
         };
-        let lines = match slot_store::read_guide(&path) {
+        slot_store::find_manual(root, cart.platform, &cart.stem)
+    }
+
+    fn text_guide(&self, path: &Path) -> Option<Guide> {
+        let root = self.root.as_ref()?;
+        let lines = match slot_store::read_guide(path) {
             Ok(lines) => lines,
             Err(e) => {
                 eprintln!("slot: guide: {}: {e}", path.display());
-                return self.refuse();
+                return None;
             }
         };
-        let Phase::Playing { cart } = &mut self.phase else {
-            return;
+        let spot = slot_store::read_guide_spot(root, path);
+        Some(Guide::new(lines, spot, self.canvas()))
+    }
+
+    /// A manual opens where it was left: its page, how far down and how close.
+    fn manual_guide(&mut self, path: &Path) -> Option<Guide> {
+        let root = self.root.as_ref()?;
+        let Some(mut manual) = crate::manual::Manual::open(path) else {
+            eprintln!("slot: manual: {}: no PNG or JPEG pages", path.display());
+            return None;
         };
-        let cart = std::mem::take(cart);
-        self.states_from_menu = self.in_game_menu.take().is_some();
-        let spot = slot_store::read_guide_spot(&root, &path);
-        let mut guide = Guide::new(lines, spot, self.canvas());
+        let spot = slot_store::read_guide_spot(root, path);
+        let page = spot.map_or(0, |s| s.line as usize).min(manual.len() - 1);
+        let (level, y) = spot.map_or((slot_ui::MANUAL_FIT_WIDTH, 0), |s| (s.zoom, s.col));
+        let canvas = self.canvas();
+        let shown = manual.show(page, level, y, false, canvas);
+        manual.read_ahead(page + 1, shown.level(), canvas);
+        self.manual = Some(manual);
+        Some(Guide::manual(shown, canvas))
+    }
+
+    /// The text guide if the game has one, else its manual.
+    fn first_guide(&mut self) -> Option<(Guide, PathBuf)> {
+        if let Some(path) = self.guide_file() {
+            if let Some(g) = self.text_guide(&path) {
+                return Some((g, path));
+            }
+        }
+        let path = self.manual_file()?;
+        self.manual_guide(&path).map(|g| (g, path))
+    }
+
+    fn dress_guide(&self, guide: &mut Guide) {
         guide.set_hint_faces(self.guide_hint_faces.clone());
         if let Some((face, title)) = self.guide_help_face {
             guide.set_help_face(face, title);
         }
+    }
+
+    fn open_guide(&mut self) {
+        if self.link_active() {
+            return self.refuse();
+        }
+        let Some((mut guide, path)) = self.first_guide() else {
+            self.has_guide = self.guide_file().is_some() || self.manual_file().is_some();
+            return self.refuse();
+        };
+        let Phase::Playing { cart } = &mut self.phase else {
+            self.manual = None;
+            return;
+        };
+        let cart = std::mem::take(cart);
+        self.states_from_menu = self.in_game_menu.take().is_some();
+        self.dress_guide(&mut guide);
         self.guide = Some((guide, path));
         self.phase = Phase::Polaroids { cart };
+    }
+
+    /// Select: from the text guide to the manual and back, when the game has both.
+    fn switch_guide(&mut self) {
+        let in_manual = self.guide.as_ref().is_some_and(|(g, _)| g.pic().is_some());
+        let other = match in_manual {
+            true => self
+                .guide_file()
+                .and_then(|p| self.text_guide(&p).map(|g| (g, p, None))),
+            false => {
+                let kept = self.manual.take();
+                let opened = self
+                    .manual_file()
+                    .and_then(|p| self.manual_guide(&p).map(|g| (g, p, self.manual.take())));
+                self.manual = kept;
+                opened
+            }
+        };
+        let Some((mut guide, path, manual)) = other else {
+            return self.refuse();
+        };
+        self.save_guide_spot();
+        self.dress_guide(&mut guide);
+        self.guide = Some((guide, path));
+        self.manual = manual;
     }
 
     fn shut_guide(&mut self) {
         self.save_guide_spot();
         self.guide = None;
+        self.manual = None;
     }
 
     fn save_guide_spot(&self) {
@@ -15718,6 +15791,12 @@ impl App {
             }
             return;
         }
+        if pressed == Btn::Select {
+            return self.switch_guide();
+        }
+        if g.pic().is_some() {
+            return self.manual_input(pressed);
+        }
         match pressed {
             Btn::Up => g.scroll(-1, canvas),
             Btn::Down => g.scroll(1, canvas),
@@ -15734,6 +15813,54 @@ impl App {
             Btn::X => g.toggle_wrap(canvas),
             Btn::Y => self.close_polaroids(),
             _ => {}
+        }
+    }
+
+    fn manual_input(&mut self, pressed: Btn) {
+        let canvas = self.canvas();
+        let Some(p) = self.guide.as_mut().and_then(|(g, _)| g.pic_mut()) else {
+            return;
+        };
+        let turn = match pressed {
+            Btn::Up => p.scroll(-1, canvas),
+            Btn::Down => p.scroll(1, canvas),
+            Btn::Left => p.pan(-1, canvas),
+            Btn::Right => p.pan(1, canvas),
+            Btn::L1 => p.turn(-1).map(|t| slot_ui::Turn {
+                at_bottom: false,
+                ..t
+            }),
+            Btn::R1 => p.turn(1),
+            Btn::A => {
+                p.zoom_by(1, canvas);
+                None
+            }
+            Btn::B => {
+                p.zoom_by(-1, canvas);
+                None
+            }
+            Btn::Y => return self.close_polaroids(),
+            _ => None,
+        };
+        let Some(t) = turn else {
+            return;
+        };
+        let (level, from) = (p.level(), p.page());
+        let Some(manual) = self.manual.as_mut() else {
+            return;
+        };
+        let shown = manual.show(t.page, level, 0, t.at_bottom, canvas);
+        // the page after this one the same way, ready for the next turn
+        match t.page > from {
+            true => manual.read_ahead(t.page + 1, level, canvas),
+            false => {
+                if let Some(back) = t.page.checked_sub(1) {
+                    manual.read_ahead(back, level, canvas);
+                }
+            }
+        }
+        if let Some((g, _)) = &mut self.guide {
+            g.set_pic(shown);
         }
     }
 

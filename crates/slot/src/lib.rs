@@ -52,6 +52,7 @@ pub mod link_screen;
 pub mod link_start;
 pub mod link_state;
 pub mod loading_mark;
+pub mod manual;
 pub mod network_faces;
 pub mod networks;
 pub mod overlay;

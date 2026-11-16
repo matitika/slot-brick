@@ -46,8 +46,8 @@ pub use core::{
 pub use gb_palette::{GbColors, GbPalette};
 pub use gba::{header_clean, header_code, header_title, header_title_code};
 pub use guides::{
-    decode_guide, find_guide, read_guide, read_guide_spot, write_guide_spot, GuideSpot, GUIDES_DIR,
-    GUIDE_SPOTS_FILE,
+    decode_guide, find_guide, find_manual, read_guide, read_guide_spot, write_guide_spot,
+    GuideSpot, GUIDES_DIR, GUIDE_SPOTS_FILE, MANUALS_DIR,
 };
 #[cfg(feature = "nds")]
 pub use nds_header::{read_banner, NdsBanner};

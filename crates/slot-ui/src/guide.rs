@@ -9,6 +9,7 @@ use slot_store::GuideSpot;
 use crate::bitmaps::ButtonLegend;
 use crate::footer::Printed;
 use crate::hud::PLATE_H;
+use crate::manual_page::ManualPage;
 use crate::plate::{
     blit, hint_quad, hint_row, hint_width, Hint, UndoFace, HINT_H, TITLE_H, TITLE_W,
 };
@@ -79,6 +80,8 @@ pub struct GuideView {
     pub wrap: bool,
     pub w: u32,
     pub h: u32,
+    /// A manual's page number, from 1; 0 for a text guide.
+    pub sheet: usize,
 }
 
 #[derive(Copy, Clone)]
@@ -141,6 +144,7 @@ pub struct Guide {
     help: bool,
     help_face: Option<(TexId, u32, u32)>,
     help_title: Option<TexId>,
+    pic: Option<ManualPage>,
 }
 
 impl Guide {
@@ -165,6 +169,7 @@ impl Guide {
             help: false,
             help_face: None,
             help_title: None,
+            pic: None,
         };
         if g.wrap {
             g.reflow(spot.line, spot.col, canvas);
@@ -173,7 +178,35 @@ impl Guide {
         g
     }
 
+    /// A manual's pages in place of text: the same screen, help and ways out.
+    pub fn manual(page: ManualPage, canvas: Canvas) -> Self {
+        let mut g = Guide::new(Vec::new(), None, canvas);
+        g.pic = Some(page);
+        g
+    }
+
+    pub fn pic(&self) -> Option<&ManualPage> {
+        self.pic.as_ref()
+    }
+
+    pub fn pic_mut(&mut self) -> Option<&mut ManualPage> {
+        self.pic.as_mut()
+    }
+
+    /// The next page in place of this one.
+    pub fn set_pic(&mut self, page: ManualPage) {
+        self.pic = Some(page);
+    }
+
     pub fn spot(&self) -> GuideSpot {
+        if let Some(p) = &self.pic {
+            return GuideSpot {
+                line: p.page() as u32,
+                col: p.offset().1,
+                zoom: p.level(),
+                wrap: false,
+            };
+        }
         let (line, col) = self.anchor();
         GuideSpot {
             line,
@@ -263,7 +296,20 @@ impl Guide {
 
     pub fn view(&self, canvas: Canvas) -> GuideView {
         let (_, _, w, h) = page_box(canvas);
+        if let Some(p) = &self.pic {
+            let (x, y) = p.offset();
+            return GuideView {
+                line: y as usize,
+                col: x as usize,
+                zoom: p.level(),
+                wrap: false,
+                w,
+                h,
+                sheet: p.page() + 1,
+            };
+        }
         GuideView {
+            sheet: 0,
             line: self.line,
             col: self.col,
             zoom: self.zoom,
@@ -340,6 +386,13 @@ impl Guide {
     pub fn render(&self, canvas: Canvas, glyphs: &mut GuideGlyphs) -> UndoFace {
         let view = self.view(canvas);
         let (w, h) = (view.w, view.h);
+        if let Some(p) = &self.pic {
+            return UndoFace {
+                rgba: p.render(w, h),
+                w,
+                h,
+            };
+        }
         let mut rgba = vec![0u8; (w * h * 4) as usize];
         for px in rgba.chunks_exact_mut(4) {
             px[3] = 255;
@@ -432,6 +485,9 @@ impl Guide {
     }
 
     fn draw_bar(&self, canvas: Canvas, out: &mut Vec<Draw>) {
+        if let Some(p) = &self.pic {
+            return draw_pic_bars(p, canvas, out);
+        }
         let rows = self.rows(canvas);
         if self.count() <= rows {
             return;
@@ -453,6 +509,49 @@ impl Guide {
             y: y + (h - thumb) * self.line as f32 / last,
             w: BAR_W,
             h: thumb,
+            colour: THUMB,
+        });
+    }
+}
+
+/// A manual's bars: down the right, where the view is on a page taller than it; along the
+/// bottom, which page of how many.
+fn draw_pic_bars(p: &ManualPage, canvas: Canvas, out: &mut Vec<Draw>) {
+    let (bx, by, bw, bh) = page_box(canvas);
+    let (_, sh) = p.scaled_size();
+    if sh > bh {
+        let (x, h) = (canvas.w - BAR_X - BAR_W, bh as f32);
+        out.push(Draw::Rect {
+            x,
+            y: by,
+            w: BAR_W,
+            h,
+            colour: TRACK,
+        });
+        let thumb = (h * bh as f32 / sh as f32).max(BAR_MIN);
+        out.push(Draw::Rect {
+            x,
+            y: by + (h - thumb) * p.offset().1 as f32 / (sh - bh) as f32,
+            w: BAR_W,
+            h: thumb,
+            colour: THUMB,
+        });
+    }
+    if p.pages() > 1 {
+        let (y, w) = (by + bh as f32 + 1.0, bw as f32);
+        out.push(Draw::Rect {
+            x: bx,
+            y,
+            w,
+            h: BAR_W,
+            colour: TRACK,
+        });
+        let part = w / p.pages() as f32;
+        out.push(Draw::Rect {
+            x: bx + part * p.page() as f32,
+            y,
+            w: part.max(BAR_MIN),
+            h: BAR_W,
             colour: THUMB,
         });
     }
@@ -505,6 +604,7 @@ pub fn guide_help_face() -> UndoFace {
         (button_pair(ButtonLegend::Left, ButtonLegend::Right), "Pan"),
         (button_pair(ButtonLegend::A, ButtonLegend::B), "Zoom"),
         (button_face(ButtonLegend::X), "Wrap"),
+        (button_face(ButtonLegend::Select), "Guide / Manual"),
     ])
 }
 
