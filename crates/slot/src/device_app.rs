@@ -99,6 +99,10 @@ pub fn run() {
     let root = std::env::var_os("SLOT_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from(if board.is_trimui() { TRIMUI_CARD } else { CARD }));
+    // an update staged before a power-off: in place now, and the new slot started instead
+    if board.is_trimui() && apply_update(&root) {
+        return;
+    }
     // Less sound queued on the Brick: measured, the default trailed the picture by about 110 ms
     // (75 in slot's ring, 36 in the device), which a rhythm game feels. Its frames now keep up, so
     // 4 frames of ring and 20 ms of device buffer; Config/audio-large-buffer keeps the defaults.
@@ -186,8 +190,8 @@ pub fn run() {
     let target = slot::baseos::var("BASEOS_TARGET").unwrap_or_default();
     let keymap = slot::input::evdev::Keymap::of_system();
     frontend.set_left_stick(keymap.has_stick(&target));
-    // releases are built for the Anbernics and applied by their launcher
-    frontend.set_self_updates(!board.is_trimui());
+    // the Anbernics take slot-cfw's releases, the Brick its fork's (applied by slot below)
+    frontend.set_self_updates(true);
     // upstream marks where 1024x768 frame art will go in lime; on the Brick, black
     frontend.set_placeholder_bezels(!board.is_trimui());
     // the Brick's LEDs: Settings → General → LEDs
@@ -283,6 +287,9 @@ pub fn run() {
                 cpu.restore();
             }
             frontend.relaunch();
+            if board.is_trimui() {
+                apply_update(&root);
+            }
             return;
         }
         if frontend.repairing() {
@@ -599,6 +606,22 @@ fn sync_log_writes() {
                 libc::syncfs(2);
             }
             synced = st.st_size;
+        }
+    }
+}
+
+/// The Brick's start scripts run slot again whenever it ends, but do not apply an update the
+/// way the Anbernics' launch_frontend.sh does, so slot moves it into System itself.
+fn apply_update(root: &std::path::Path) -> bool {
+    match slot::update::apply_staged(root) {
+        Ok(true) => {
+            eprintln!("slot: update applied, starting the new slot");
+            true
+        }
+        Ok(false) => false,
+        Err(e) => {
+            eprintln!("slot: update: {e}");
+            false
         }
     }
 }

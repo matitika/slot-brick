@@ -1,7 +1,8 @@
 name: brick
 
 # Builds slot for the TrimUI Brick: the stock-firmware card files and the Slot OS card image,
-# as downloads on the run's page.
+# as downloads on the run's page, and releases them. Each release carries the update zip and
+# versions.json that Settings → System → Check for Updates on the Brick looks for.
 on:
   push:
     branches: [brick]
@@ -15,6 +16,8 @@ jobs:
     name: card files
     runs-on: ubuntu-24.04-arm
     container: rust:1-bullseye
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
 
@@ -27,7 +30,18 @@ jobs:
           curl -fsSL https://taskfile.dev/install.sh | sh -s -- -b /usr/local/bin
           curl -fsSL https://bun.sh/install | BUN_INSTALL=/usr/local bash -s "bun-v1.2.6"
 
+      # upstream's version with this workflow's run number after it, so every build is newer
+      - name: Version
+        id: version
+        run: |
+          set -eu
+          base="$(sed -n 's/^## \[\([0-9.]*\)\].*/\1/p' CHANGELOG.md | head -n 1)"
+          test -n "$base"
+          echo "version=$base.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
       - name: Build the stock-firmware card and the Slot OS card files
+        env:
+          SLOT_VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -eu
           task dist:trimui
@@ -37,10 +51,27 @@ jobs:
           test -f dist-trimui-os/System/brick-sleep.sh
 
       - name: Package
+        env:
+          V: ${{ steps.version.outputs.version }}
         run: |
           set -eu
           (cd dist-trimui && zip -qry ../slot-brick-stock.zip .)
           tar -czf slot-brick-os-files.tar.gz dist-trimui-os
+          # the update: System as both systems have it (they hold the same files)
+          diff -r dist-trimui/System dist-trimui-os/System
+          for f in slot launch_frontend.sh mgba_libretro.so gpsp_libretro.so gambatte_libretro.so; do
+            test -f "dist-trimui-os/System/$f"
+          done
+          mkdir -p update/slot-brick
+          cp -r dist-trimui-os/System update/slot-brick/
+          zip="slot-v$V-brick.zip"
+          (cd update && zip -qr "../$zip" slot-brick)
+          size="$(wc -c < "$zip")"
+          test "$size" -lt 60000000
+          sha="$(sha256sum "$zip" | cut -d' ' -f1)"
+          printf '{"stable": {"version": "%s", "tag": "brick-v%s", "zip": "%s", "size": %s, "sha256": "%s"}}\n' \
+            "$V" "$V" "$zip" "$size" "$sha" > versions.json
+          cat versions.json
 
       - uses: actions/upload-artifact@v7
         with:
@@ -54,6 +85,14 @@ jobs:
           path: slot-brick-os-files.tar.gz
           if-no-files-found: error
           retention-days: 1
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: slot-brick-update
+          path: |
+            slot-v*-brick.zip
+            versions.json
+          if-no-files-found: error
 
   image:
     name: Slot OS image
@@ -79,3 +118,27 @@ jobs:
           path: dist-os/slot-os.img.xz
           if-no-files-found: error
           compression-level: 0
+
+  release:
+    name: Release
+    needs: [card, image]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ needs.card.outputs.version }}
+        run: |
+          set -eu
+          ls -l out
+          gh api "repos/${{ github.repository }}/commits/${{ github.sha }}" --jq .commit.message > notes.md
+          gh release create "brick-v$V" --repo "${{ github.repository }}" --target "${{ github.sha }}" \
+            --title "Brick $V" --notes-file notes.md --latest \
+            out/slot-v*-brick.zip out/versions.json out/slot-brick-stock.zip out/slot-os.img.xz

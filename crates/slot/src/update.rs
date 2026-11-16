@@ -58,6 +58,8 @@ pub enum UpdateFail {
 pub enum Device {
     H700,
     RgDsPlus,
+    /// The TrimUI Brick, updated from the slot-brick fork's releases.
+    Brick,
 }
 
 impl Device {
@@ -72,6 +74,21 @@ impl Device {
         match self {
             Device::H700 => "h700",
             Device::RgDsPlus => "rgdsplus",
+            Device::Brick => "brick",
+        }
+    }
+
+    fn releases(self) -> &'static str {
+        match self {
+            Device::Brick => BRICK_RELEASES,
+            _ => RELEASES,
+        }
+    }
+
+    fn latest(self) -> &'static str {
+        match self {
+            Device::Brick => BRICK_LATEST,
+            _ => LATEST,
         }
     }
 }
@@ -85,7 +102,7 @@ pub fn parse_release(json: &str, device: Device) -> Result<Release, UpdateFail> 
         .to_string();
     let tag = stable["tag"].as_str().ok_or(UpdateFail::Bad)?;
     let asset = match device {
-        Device::H700 => stable,
+        Device::H700 | Device::Brick => stable,
         Device::RgDsPlus => &stable["rgdsplus"],
     };
     let zip = asset["zip"].as_str().ok_or(UpdateFail::Bad)?;
@@ -100,7 +117,7 @@ pub fn parse_release(json: &str, device: Device) -> Result<Release, UpdateFail> 
     Ok(Release {
         kind: Kind::Slot,
         running: String::new(),
-        url: format!("{RELEASES}/{tag}/{zip}"),
+        url: format!("{}/{tag}/{zip}", device.releases()),
         version,
         sha256,
         size,
@@ -195,6 +212,46 @@ fn unpack(dir: &Path, zip: &[u8]) -> Result<(), UpdateFail> {
     let mut manifest = listed.join("\n");
     manifest.push('\n');
     slot_store::atomic_write(&dir.join(MANIFEST), manifest.as_bytes()).map_err(|_| UpdateFail::Bad)
+}
+
+/// Moves a staged update (System.new, complete once its manifest is written) into System, as
+/// launch_frontend.sh does on the Anbernics; on the Brick nothing else would. slot itself goes
+/// last, so a failure part way leaves the old slot to try again. Files System has that the
+/// update does not are kept: the card's flags (trace-latency.on) live there too.
+/// Ok(true) once applied, so the caller ends and the new slot is started in its place.
+pub fn apply_staged(root: &Path) -> Result<bool, String> {
+    let new = root.join(STAGING);
+    if !new.is_dir() {
+        return Ok(false);
+    }
+    let Ok(manifest) = std::fs::read_to_string(new.join(MANIFEST)) else {
+        let _ = std::fs::remove_dir_all(&new);
+        return Err("an unfinished update was discarded".into());
+    };
+    let sys = root.join("System");
+    let listed: Vec<&str> = manifest.lines().filter(|l| !l.is_empty()).collect();
+    for f in listed
+        .iter()
+        .filter(|f| **f != "slot")
+        .chain(listed.iter().filter(|f| **f == "slot"))
+    {
+        let rel = system_path(&format!("x/System/{f}"))
+            .ok()
+            .flatten()
+            .ok_or_else(|| format!("update lists a bad path: {f}"))?;
+        let (from, to) = (new.join(&rel), sys.join(&rel));
+        if !from.exists() {
+            continue;
+        }
+        if let Some(parent) = to.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("{f}: {e}"))?;
+        }
+        std::fs::rename(&from, &to).map_err(|e| format!("could not move {f}: {e}"))?;
+    }
+    let _ = std::process::Command::new("sync").status();
+    std::fs::remove_dir_all(&new).map_err(|e| format!("could not clear {STAGING}: {e}"))?;
+    let _ = std::process::Command::new("sync").status();
+    Ok(true)
 }
 
 fn system_path(name: &str) -> Result<Option<PathBuf>, UpdateFail> {
@@ -305,6 +362,11 @@ impl<R: Read> Read for Stoppable<R> {
 pub const WIFI_CONF: &str = "Config/wifi.conf";
 pub const LATEST: &str = "https://slot-cfw.fyi/versions.json";
 const RELEASES: &str = "https://github.com/slot-cfw/slot/releases/download";
+/// The Brick's builds: each push to the fork's brick branch is released with a versions.json
+/// beside its zip, and GitHub's latest/download path always names the newest.
+pub const BRICK_LATEST: &str =
+    "https://github.com/matitika/slot-brick/releases/latest/download/versions.json";
+const BRICK_RELEASES: &str = "https://github.com/matitika/slot-brick/releases/download";
 const BASEOS_RELEASES: &str = "https://github.com/pvaibhav/BaseOS/releases/download";
 
 #[derive(Debug, Clone, Copy)]
@@ -356,14 +418,26 @@ pub fn check_with(
     fetch: &mut dyn FnMut(&str) -> Result<Vec<u8>, UpdateFail>,
     running: Running,
 ) -> UpdateEvent {
+    let device = Device::of_target(running.baseos.map_or("", |(target, _)| target));
+    check_device_with(now_unix, fetch, running, device)
+}
+
+/// As check_with, for a device named outright (the Brick has no BaseOS to name it).
+pub fn check_device_with(
+    now_unix: u64,
+    fetch: &mut dyn FnMut(&str) -> Result<Vec<u8>, UpdateFail>,
+    running: Running,
+    device: Device,
+) -> UpdateEvent {
     if clock_is_wrong(now_unix) {
         return UpdateEvent::Failed(UpdateFail::Clock);
     }
-    let body = match fetch(LATEST).and_then(|b| String::from_utf8(b).map_err(|_| UpdateFail::Bad)) {
+    let body = match fetch(device.latest())
+        .and_then(|b| String::from_utf8(b).map_err(|_| UpdateFail::Bad))
+    {
         Ok(body) => body,
         Err(e) => return UpdateEvent::Failed(e),
     };
-    let device = Device::of_target(running.baseos.map_or("", |(target, _)| target));
     let slot = match parse_release(&body, device) {
         Ok(r) => Release {
             running: running.slot.to_string(),
@@ -665,13 +739,18 @@ fn run(root: &Path, job: &UpdateJob, ticket: &Ticket, tx: &Sender<UpdateEvent>) 
         UpdateJob::Check => {
             let target = crate::baseos::var("BASEOS_TARGET");
             let version = crate::baseos::var("BASEOS_VERSION");
-            check_with(
+            let device = match std::env::var("SLOT_DEVICE") {
+                Ok(d) if d.starts_with("brick") => Device::Brick,
+                _ => Device::of_target(target.as_deref().unwrap_or("")),
+            };
+            check_device_with(
                 now_unix(),
                 &mut |url| fetch(url, API_TIMEOUT, &mut |_| {}),
                 Running {
                     slot: crate::build_info::Build::current().version,
                     baseos: target.as_deref().zip(version.as_deref()),
                 },
+                device,
             )
         }
         UpdateJob::Install(release) => {

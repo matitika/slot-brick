@@ -61,6 +61,16 @@ With Settings' network time on, slot sets the clock from an internet time server
 once Wi-Fi is up, then every six hours: neither Slot OS nor TrimUI's system has a time service
 of its own.
 
+## Updates
+
+Settings → System → Check for Updates downloads the newest Brick build over Wi-Fi, on stock
+firmware and on Slot OS alike. Every push to this fork's `brick` branch is released on GitHub
+as `brick-v<upstream version>.<build number>`, with the update zip and the `versions.json` the
+Brick reads. slot unpacks the update into `System.new`, then, as it restarts, moves it into
+`System` and the new slot starts. Files in `System` the update does not have (such as
+`trace-latency.on`) are left alone. A Slot OS kernel or image change still needs the image
+from the release flashed by hand.
+
 ## When something goes wrong
 
 Logs are on the card in `Logs/`:

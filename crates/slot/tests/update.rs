@@ -1,9 +1,9 @@
 use std::io::{Cursor, Read, Write};
 
 use slot::update::{
-    check_with, clean_baseos, clock_is_wrong, install_baseos_with, install_with, newer,
-    parse_baseos, parse_release, read_counted, stage, verify, wifi_conf, will_apply, Device, Kind,
-    Release, Running, Stoppable, Ticket, UpdateEvent, UpdateFail,
+    apply_staged, check_device_with, check_with, clean_baseos, clock_is_wrong, install_baseos_with,
+    install_with, newer, parse_baseos, parse_release, read_counted, stage, verify, wifi_conf,
+    will_apply, Device, Kind, Release, Running, Stoppable, Ticket, UpdateEvent, UpdateFail,
 };
 
 const DIGEST: &str = "e78b2771abbc41a07774fe870e08d3d870c1a06c6db42a1d799626190156aba5";
@@ -775,4 +775,80 @@ fn a_check_on_the_ds_plus_offers_the_ds_plus_zip() {
         "{}",
         offers[0].url
     );
+}
+
+#[test]
+fn the_brick_checks_its_forks_releases() {
+    let json = format!(
+        r#"{{"stable": {{"version": "1.16.0.12", "tag": "brick-v1.16.0.12",
+            "zip": "slot-v1.16.0.12-brick.zip", "size": 6919551, "sha256": "{DIGEST}"}}}}"#
+    );
+    let mut asked = Vec::new();
+    let event = check_device_with(
+        1_800_000_000,
+        &mut |url| {
+            asked.push(url.to_string());
+            Ok(json.clone().into_bytes())
+        },
+        slot_only("1.16.0.11"),
+        Device::Brick,
+    );
+    assert_eq!(
+        asked,
+        ["https://github.com/matitika/slot-brick/releases/latest/download/versions.json"]
+    );
+    match event {
+        UpdateEvent::Available(offers) => {
+            assert_eq!(offers.len(), 1);
+            assert_eq!(offers[0].version, "1.16.0.12");
+            assert_eq!(
+                offers[0].url,
+                "https://github.com/matitika/slot-brick/releases/download/brick-v1.16.0.12/slot-v1.16.0.12-brick.zip"
+            );
+        }
+        other => panic!("{other:?}"),
+    }
+    let same = check_device_with(
+        1_800_000_000,
+        &mut |_| Ok(json.clone().into_bytes()),
+        slot_only("1.16.0.12"),
+        Device::Brick,
+    );
+    assert_eq!(same, UpdateEvent::UpToDate);
+}
+
+#[test]
+fn the_brick_refuses_another_devices_zip() {
+    let json = release_json("v1.16.0", "slot-v1.16.0-h700.zip", DIGEST);
+    assert_eq!(parse_release(&json, Device::Brick), Err(UpdateFail::Bad));
+}
+
+#[test]
+fn a_staged_update_moves_into_system_keeping_the_cards_own_files() {
+    let d = tempfile::tempdir().unwrap();
+    let sys = d.path().join("System");
+    std::fs::create_dir_all(&sys).unwrap();
+    std::fs::write(sys.join("slot"), b"old").unwrap();
+    std::fs::write(sys.join("trace-latency.on"), b"").unwrap();
+    let zip = release_zip(&[("slot-brick/System/brick-sleep.sh", b"sleep")]);
+    stage(d.path(), &zip).unwrap();
+    assert_eq!(apply_staged(d.path()), Ok(true));
+    assert_eq!(std::fs::read(sys.join("brick-sleep.sh")).unwrap(), b"sleep");
+    assert_ne!(std::fs::read(sys.join("slot")).unwrap(), b"old");
+    assert!(sys.join("trace-latency.on").exists());
+    assert!(!d.path().join("System.new").exists());
+    assert_eq!(apply_staged(d.path()), Ok(false));
+}
+
+#[test]
+fn an_unfinished_staged_update_is_discarded_not_applied() {
+    let d = tempfile::tempdir().unwrap();
+    let sys = d.path().join("System");
+    std::fs::create_dir_all(d.path().join("System.new")).unwrap();
+    std::fs::create_dir_all(&sys).unwrap();
+    std::fs::write(sys.join("slot"), b"old").unwrap();
+    std::fs::write(d.path().join("System.new/slot"), b"half").unwrap();
+    assert!(apply_staged(d.path()).is_err());
+    assert_eq!(std::fs::read(sys.join("slot")).unwrap(), b"old");
+    assert!(!d.path().join("System.new").exists());
 }
