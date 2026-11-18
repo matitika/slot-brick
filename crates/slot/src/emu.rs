@@ -880,11 +880,12 @@ impl Worker {
                 self.publish(core.video_xrgb8888());
                 self.frame_done(served);
 
+                // Fast-forward keeps its rewind points too, one every SNAPSHOT_EVERY presents (each
+                // a span of frames), so the cost holds at normal speed's rate. Without them the
+                // newest point was where fast-forward began, and one tap of rewind afterwards
+                // threw away everything fast-forwarded through.
                 since_snapshot += 1;
-                if cable.is_some()
-                    || speed == Speed::Fast
-                    || !self.shared.recording.load(Ordering::Relaxed)
-                {
+                if cable.is_some() || !self.shared.recording.load(Ordering::Relaxed) {
                     since_snapshot = 0;
                 }
                 if since_snapshot >= SNAPSHOT_EVERY {

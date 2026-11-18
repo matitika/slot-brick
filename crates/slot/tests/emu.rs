@@ -130,6 +130,30 @@ fn rewinding_walks_the_core_backwards_and_then_plays_on() {
 }
 
 #[test]
+fn a_tap_of_rewind_after_fast_forward_steps_back_only_a_little() {
+    let emu = spawn();
+    std::thread::sleep(Duration::from_millis(200));
+    let before_fast = frame_count(&emu);
+    emu.set_speed(Speed::Fast);
+    std::thread::sleep(Duration::from_millis(400));
+    emu.set_speed(Speed::Normal);
+    std::thread::sleep(Duration::from_millis(50));
+    let played = frame_count(&emu);
+    assert!(played > before_fast + 60, "fast forward did not run ahead");
+
+    // a tap: rewind for one short moment
+    emu.set_rewinding(true);
+    std::thread::sleep(Duration::from_millis(40));
+    emu.set_rewinding(false);
+    std::thread::sleep(Duration::from_millis(20));
+    let rewound = frame_count(&emu);
+    assert!(
+        rewound > before_fast,
+        "one tap went back past the whole fast-forward: {before_fast} before it, {played} after, {rewound} rewound"
+    );
+}
+
+#[test]
 fn fast_forward_mutes_and_normal_speed_unmutes() {
     let sink = StubSink::new();
     let emu = spawn_into(sink.clone(), None);
@@ -521,33 +545,6 @@ fn the_renderer_is_handed_whole_gba_frames() {
         assert!(Instant::now() < deadline, "no frame was published in 2s");
         std::thread::sleep(Duration::from_millis(2));
     }
-}
-
-#[test]
-fn fast_forward_records_no_rewind_history() {
-    let emu = spawn();
-    std::thread::sleep(Duration::from_millis(200));
-    let before_ff = frame_count(&emu);
-
-    emu.set_speed(Speed::Fast);
-    std::thread::sleep(Duration::from_millis(300));
-    emu.set_speed(Speed::Normal);
-    let after_ff = frame_count(&emu);
-    assert!(
-        after_ff > before_ff,
-        "fast forward did not advance the core: {before_ff} then {after_ff}"
-    );
-
-    emu.set_rewinding(true);
-    std::thread::sleep(Duration::from_millis(60));
-    emu.set_rewinding(false);
-    let rewound = frame_count(&emu);
-
-    assert!(
-        rewound <= before_ff,
-        "a short rewind landed inside the fast stretch, so it was recorded: \
-         {before_ff} -> {after_ff} -> {rewound}"
-    );
 }
 
 struct PairedLink {

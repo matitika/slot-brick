@@ -20,7 +20,7 @@ Hold <kbd>L2</kbd> to go back in time.
 
 How far back you can go depends on the game, as some games have larger state files.
 
-Rewind only records at normal speed. You can turn rewind off in Settings → Gameplay if you don't want it.
+Rewind records while fast-forwarding too, so a tap of rewind after fast-forwarding goes back a moment, not to where fast-forward began. You can turn rewind off in Settings → Gameplay if you don't want it.
 
 ## Turbo
 
